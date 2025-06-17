@@ -1,1 +1,5 @@
 *.jpg
+*.gz
+*.tif
+*.json
+__pycache__
