@@ -1,16 +1,61 @@
-import matplotlib.pyplot as plt
 import os
-import numpy as np
 import math
-import tifffile 
+import numpy as np
+import matplotlib.pyplot as plt
+import tifffile
+import tensorflow as tf
+from tensorflow.keras import layers, models
 
+# ==== Define your ResNet18 model architecture ====
+def residual_block(x, filters, downsample=False):
+    shortcut = x
+    stride = 2 if downsample else 1
+
+    x = layers.Conv2D(filters, 3, strides=stride, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+
+    x = layers.Conv2D(filters, 3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+
+    if downsample or x.shape[-1] != shortcut.shape[-1]:
+        shortcut = layers.Conv2D(filters, 1, strides=stride, padding='same')(shortcut)
+        shortcut = layers.BatchNormalization()(shortcut)
+
+    x = layers.Add()([x, shortcut])
+    x = layers.ReLU()(x)
+    return x
+
+def build_model(input_shape=(128, 128, 12)):
+    inputs = tf.keras.Input(shape=input_shape)
+    
+    x = layers.Conv2D(64, 7, strides=2, padding='same')(inputs)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.MaxPooling2D(pool_size=3, strides=2, padding='same')(x)
+
+    for filters in [64, 128, 256, 512]:
+        x = residual_block(x, filters, downsample=True)
+        x = residual_block(x, filters)
+
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(1, activation='sigmoid', dtype='float32')(x)  # Cast output back to float32
+
+    return tf.keras.Model(inputs, x)
+
+# ==== Load model weights ====
+model = build_model()
+model.load_weights("src/google_earth_engien/resnet18_solar_classifier.h5")
+print("✅ Model loaded successfully.")
+
+# ==== Configuration ====
 root = os.path.dirname(__file__)
 folder = 'downloaded_s2_images'
 
 dummy_locations = [
-        {"lon": 139.3767, "lat": 35.9839},
-        {"lon": 71.7583232107515, "lat": 38.310451921845235},
-        {"lon": 29.638116168955374, "lat": 36.40422688894361},
+    {"lon": 139.3767, "lat": 35.9839},
+    {"lon": 71.7583232107515, "lat": 38.310451921845235},
+    {"lon": 29.638116168955374, "lat": 36.40422688894361},
     {"lon": 118.47251461553486, "lat": 30.108833377834003},
     {"lon": 120.29968790343396, "lat": -28.89431111370441},
     {"lon": -79.31495138076491, "lat": 42.48761799300101},
@@ -20,62 +65,58 @@ dummy_locations = [
     {"lon": 138.63609948288163, "lat": -18.558295454625195},
     {"lon": -97.03152541417012, "lat": 59.30947000342317},
     {"lon": -87.00093695169154, "lat": 31.31616911969064}
-    ]
+]
 
+# ==== Plot setup ====
 num_images = len(dummy_locations)
 n_cols = 4
 n_rows = math.ceil(num_images / n_cols)
-
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2, n_rows * 2))
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
 axes = axes.flatten()
 
-print(f"Attempting to load and display {num_images} images from {os.path.join(root, folder)}...")
-
+# ==== Main loop ====
 for i, loc in enumerate(dummy_locations):
     ax = axes[i]
-    lon, lat = loc['lon'], loc['lat']
-    title = f"Lat: {lat:.4f}\nLon: {lon:.4f}"
-
-    # Construct the expected filename for the GeoTIFF
-    # Remember the filename format was "{lat:.4f}_{lon:.4f}_multispectral.tif"
-    # from the previous `fetch_images_from_json` function.
+    lat, lon = loc['lat'], loc['lon']
+    title = f"Lat: {lat:.2f}\nLon: {lon:.2f}"
     image_filename = f"{lat:.4f}_{lon:.4f}_multispectral.tif"
     image_path = os.path.join(root, folder, image_filename)
 
     try:
         if os.path.exists(image_path):
-            # Load the multispectral GeoTIFF using tifffile
-            # tifffile.imread typically loads as (height, width, channels)
-            multispectral_image = tifffile.imread(image_path)
-            
-            # Clip and normalize for display
-            # Sentinel-2 reflectance values are usually 0-10000, so divide by 10000 to scale to 0-1.
-            # Or you can clip to a certain range for better visual contrast.
-            rgb_display_image = multispectral_image[:, :, [3, 2, 1]] #/ 10000.0 # B4, B3, B2 and normalize
+            img = tifffile.imread(image_path)
 
-            # For better contrast, you might want to apply a min/max stretch
-            # For example, values between 0 and 0.3 for display.
-            rgb_display_image = np.clip(rgb_display_image, 0, 0.3) / 0.3
+            if img.shape != (128, 128, 12):
+                raise ValueError(f"Expected shape (128, 128, 12), got {img.shape}")
 
-            print(rgb_display_image.shape)
-            ax.imshow(rgb_display_image)
-            ax.set_title(title, fontsize=10)
+            # Preprocessing for RGB display (B4, B3, B2 = indices 3, 2, 1)
+            rgb_display = img[:, :, [3, 2, 1]]
+            rgb_display = np.clip(rgb_display, 0, 0.3) / (0.3)
+
+            # Preprocessing for model
+            x = img.astype(np.float32)
+            x = np.expand_dims(x, axis=0)
+
+            # Inference
+            pred = model.predict(x, verbose=0)[0][0]
+            # print(pred)
+            pred_label = int(pred > 0.5)
+
+            ax.imshow(rgb_display)
+            ax.set_title(f"{title}\nPred: {pred:.6f} (Class {pred_label})", fontsize=9)
             ax.axis('off')
+
         else:
             ax.set_title(f"File Not Found\n{title}", fontsize=10, color='red')
             ax.axis('off')
-            ax.text(0.5, 0.5, "Image File Not Found", horizontalalignment='center',
-                    verticalalignment='center', transform=ax.transAxes, color='red', fontsize=12)
-            print(f"Skipping {title} as file was not found: {image_path}")
+            print(f"❌ File not found: {image_path}")
 
     except Exception as e:
-        ax.set_title(f"Error Loading/Displaying\n{title}", fontsize=10, color='red')
+        ax.set_title(f"Error\n{title}", fontsize=10, color='red')
         ax.axis('off')
-        ax.text(0.5, 0.5, f"Error: {e}", horizontalalignment='center',
-                verticalalignment='center', transform=ax.transAxes, color='red', fontsize=10, wrap=True)
-        print(f"An error occurred for {title}: {e}")
+        print(f"⚠️ Error processing {image_filename}: {e}")
 
-# Hide any unused subplots
+# Hide unused axes
 for j in range(i + 1, len(axes)):
     fig.delaxes(axes[j])
 

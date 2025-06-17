@@ -102,7 +102,7 @@ def get_single_image_data(lon, lat, output_folder, image_type='multispectral_tif
                 'crs': 'EPSG:4326', # WGS84 geographic coordinate system
                 'region': region.getInfo()['coordinates'], # GEE expects raw coordinates
                 'format': 'GEO_TIFF',
-                'dimensions': '256x256' # Specify output dimensions directly (Suitable for Pytorch training)
+                'dimensions': '128x128' # Specify output dimensions directly (Suitable for Pytorch training)
             }
             download_url = image_selected_bands.getDownloadURL(download_params)
 

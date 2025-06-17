@@ -68,7 +68,10 @@ def display_multiple_tfrecord_entries_with_masks(tfrecord_path, num_entries_to_d
         max_search_attempts = 1000 # Limit the number of entries to check to avoid infinite loop on huge files with few masks
 
         # Iterate through the dataset to find entries with non-empty masks
+        i = 0
         for raw_example in raw_dataset:
+            print(i)
+            i+=1
             if len(entries_with_masks) >= num_entries_to_display:
                 break # Found enough entries
             if entry_counter >= max_search_attempts:

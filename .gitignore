@@ -2,4 +2,6 @@
 *.gz
 *.tif
 *.json
+*.pth
+*.h5
 __pycache__
