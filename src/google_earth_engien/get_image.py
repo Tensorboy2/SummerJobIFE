@@ -169,26 +169,6 @@ def fetch_images_from_json(json_file_path, output_base_folder='fetched_images', 
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    # 1. Create a dummy JSON file for testing
-    dummy_locations = [
-        {"lon": 139.3767, "lat": 35.9839},
-        {"lon": 71.7583232107515, "lat": 38.310451921845235},
-        {"lon": 29.638116168955374, "lat": 36.40422688894361},
-    {"lon": 118.47251461553486, "lat": 30.108833377834003},
-    {"lon": 120.29968790343396, "lat": -28.89431111370441},
-    {"lon": -79.31495138076491, "lat": 42.48761799300101},
-    {"lon": 84.997693868105, "lat": 21.204732281641306},
-    {"lon": 54.04713906905101, "lat": 49.372306330493025},
-    {"lon": 64.02382861448243, "lat": 34.9633291732159},
-    {"lon": 138.63609948288163, "lat": -18.558295454625195},
-    {"lon": -97.03152541417012, "lat": 59.30947000342317},
-    {"lon": -87.00093695169154, "lat": 31.31616911969064}
-    ]
-    with open(os.path.join(root,'coordinates.json'), 'w') as f:
-        json.dump(dummy_locations, f, indent=4)
-    # 2. Fetch images concurrently (e.g., 5 at a time)
-    # Set image_type to 'multispectral_tif' for training data
-    # Set image_type to 'rgb_png' if you just need visualization
     fetched_data_paths = fetch_images_from_json(
         os.path.join(root,'coordinates.json'), 
         output_base_folder=os.path.join(root,'downloaded_s2_images'), 
