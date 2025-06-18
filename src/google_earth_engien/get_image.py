@@ -3,6 +3,8 @@ import numpy as np
 from PIL import Image
 import requests
 from io import BytesIO
+import tifffile
+import torch
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
@@ -46,7 +48,7 @@ def get_single_image_data(lon, lat, output_folder, image_type='multispectral_tif
         dataset = (
             ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
             .filterBounds(region)
-            .filterDate('2020-01-01', '2020-12-31') 
+            .filterDate('2024-12-31', '2025-6-8') 
             .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 35)) # Cloud filter
             .map(mask_s2_clouds)
         )
@@ -102,7 +104,7 @@ def get_single_image_data(lon, lat, output_folder, image_type='multispectral_tif
                 'crs': 'EPSG:4326', # WGS84 geographic coordinate system
                 'region': region.getInfo()['coordinates'], # GEE expects raw coordinates
                 'format': 'GEO_TIFF',
-                'dimensions': '128x128' # Specify output dimensions directly (Suitable for Pytorch training)
+                'dimensions': '256x256' # Specify output dimensions directly (Suitable for Pytorch training)
             }
             download_url = image_selected_bands.getDownloadURL(download_params)
 
@@ -119,6 +121,46 @@ def get_single_image_data(lon, lat, output_folder, image_type='multispectral_tif
                 print(f"Failed to download multispectral GeoTIFF for {point_name}: Status {response.status_code}")
                 # Print response content for more detailed error from GEE
                 return None
+        elif image_type == 'torch_tensor':
+            # Same as multispectral_tif logic to download GeoTIFF
+            bands_to_download = [
+                'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
+                'B7', 'B8', 'B8A', 'B9', 'B11', 'B12'
+            ]
+            image_selected_bands = image.select(bands_to_download)
+
+            download_params = {
+                'crs': 'EPSG:4326',
+                'region': region.getInfo()['coordinates'],
+                'format': 'GEO_TIFF',
+                'dimensions': '256x256'
+            }
+
+            download_url = image_selected_bands.getDownloadURL(download_params)
+            response = requests.get(download_url, stream=True)
+
+            if response.status_code == 200:
+                tif_path = os.path.join(output_folder, f"{point_name}_temp.tif")
+                with open(tif_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+                # Load with tifffile and convert to tensor
+                img_np = tifffile.imread(tif_path)  # Shape: (bands, height, width) or (height, width, bands)
+                if img_np.ndim == 3 and img_np.shape[0] < img_np.shape[-1]:
+                    img_np = np.moveaxis(img_np, -1, 0)  # Convert to (C, H, W) if needed
+
+                img_tensor = torch.tensor(img_np, dtype=torch.float32)
+                pt_path = os.path.join(output_folder, f"{point_name}.pt")
+                torch.save({'image': img_tensor, 'coords': (lat, lon)}, pt_path)
+                os.remove(tif_path)  # Clean up temp file
+
+                print(f"Saved PyTorch tensor for {point_name} to {pt_path}")
+                return pt_path
+            else:
+                print(f"Failed to download GeoTIFF for {point_name}: Status {response.status_code}")
+                return None
+
         else:
             raise ValueError("Invalid image_type. Choose 'rgb_png' or 'multispectral_tif'.")
 
@@ -172,7 +214,7 @@ if __name__ == "__main__":
     fetched_data_paths = fetch_images_from_json(
         os.path.join(root,'coordinates.json'), 
         output_base_folder=os.path.join(root,'downloaded_s2_images'), 
-        image_type='multispectral_tif', # Change to 'rgb_png' if you want PNGs
+        image_type='torch_tensor', # Change to 'rgb_png' if you want PNGs
         max_workers=5 # Adjust based on your connection and GEE's rate limits
     )
 

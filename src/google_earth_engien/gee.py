@@ -26,7 +26,7 @@ def residual_block(x, filters, downsample=False):
     x = layers.ReLU()(x)
     return x
 
-def build_model(input_shape=(128, 128, 12)):
+def build_model(input_shape=(256, 256, 12)):
     inputs = tf.keras.Input(shape=input_shape)
     
     x = layers.Conv2D(64, 7, strides=2, padding='same')(inputs)
@@ -54,8 +54,8 @@ folder = 'downloaded_s2_images'
 
 dummy_locations = [
     {"lon": 139.3767, "lat": 35.9839},
-    {"lon": 71.7583232107515, "lat": 38.310451921845235},
-    {"lon": 29.638116168955374, "lat": 36.40422688894361},
+    {"lon": 6.0155, "lat": 52.4872},
+    {"lon": 6.1405, "lat": 52.4844},
     {"lon": 118.47251461553486, "lat": 30.108833377834003},
     {"lon": 120.29968790343396, "lat": -28.89431111370441},
     {"lon": -79.31495138076491, "lat": 42.48761799300101},
@@ -86,8 +86,8 @@ for i, loc in enumerate(dummy_locations):
         if os.path.exists(image_path):
             img = tifffile.imread(image_path)
 
-            if img.shape != (128, 128, 12):
-                raise ValueError(f"Expected shape (128, 128, 12), got {img.shape}")
+            if img.shape != (256, 256, 12):
+                raise ValueError(f"Expected shape (256, 256, 12), got {img.shape}")
 
             # Preprocessing for RGB display (B4, B3, B2 = indices 3, 2, 1)
             rgb_display = img[:, :, [3, 2, 1]]
@@ -98,12 +98,10 @@ for i, loc in enumerate(dummy_locations):
             x = np.expand_dims(x, axis=0)
 
             # Inference
-            pred = model.predict(x, verbose=0)[0][0]
-            # print(pred)
-            pred_label = int(pred > 0.5)
+            pred = model.predict(x)[0][0]
 
             ax.imshow(rgb_display)
-            ax.set_title(f"{title}\nPred: {pred:.6f} (Class {pred_label})", fontsize=9)
+            ax.set_title(f"{title}\nPred: {pred:.6f} ", fontsize=9)
             ax.axis('off')
 
         else:
