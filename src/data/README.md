@@ -24,7 +24,7 @@ The **gz_data** folder contains five datasets in **tfrecord.gz** format (Gziped 
 There is also **gz_data.py** for some visualization of these images in the different bands and mask.
 
 ## /utils
-utils contains a conversion script **convert_tfrecors_pt.py**. This converts the **tfrecord.gz** files int PyTorch **.pt** format with a dictionary like structure. The name is **\$\$\$\$\$\$.pt**:
+utils contains a conversion script **convert_tfrecors_pt.py**. This converts the **tfrecord.gz** files int PyTorch **.pt** format with a dictionary like structure. The name is **00000.pt**:
 ```python
 {
     'image': torch.tensor, # (256,256,12)
