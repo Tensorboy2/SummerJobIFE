@@ -3,24 +3,32 @@ import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
 import math
 from contextlib import nullcontext
+import time
+
+@torch.jit.script
+def dice_iou(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-6) -> tuple[float, float]:
+    """Computes Dice and IoU from binary predictions and targets."""
+    pred = pred.float()
+    target = target.float()
+
+    intersection = (pred * target).sum()
+    union = pred.sum() + target.sum()
+    iou_union = (pred + target - pred * target).sum()
+
+    dice = 2 * intersection / (union + eps)
+    iou = intersection / (iou_union + eps)
+
+    return dice.item(), iou.item()
 
 class EfficientTrainer:
     """Production-ready trainer with all optimizations"""
     
-    def __init__(self, model, train_loader, val_loader, device, config=None):
+    def __init__(self, model, train_loader, val_loader, device, config):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
-        # if config ==None:
-        #     self.config = config
-        # else:
-        #     config={
-        #         'use_amp':True,
-        #         'compile':True,
-        #         'lr':1e-4,
-        #         'weight_decay':0.05,
-        #     }
+        self.config = config
         
         # Mixed precision setup
         self.scaler = GradScaler()
@@ -35,7 +43,6 @@ class EfficientTrainer:
             eps=1e-8
         )
         
-
         total_steps = config['num_epochs']*(len(train_loader))
         # Learning rate scheduler
         def lr_lambda(step):
@@ -66,6 +73,8 @@ class EfficientTrainer:
     def train_epoch(self, epoch):
         self.model.train()
         total_loss = 0
+        total_dice = 0
+        total_iou = 0
         num_batches = len(self.train_loader)
         
         # Set epoch for distributed sampler
@@ -73,6 +82,7 @@ class EfficientTrainer:
             self.train_loader.sampler.set_epoch(epoch)
             
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            start = time.time()
             data, target = data.to(self.device, non_blocking=True), \
                           target.to(self.device, non_blocking=True)
             
@@ -83,6 +93,7 @@ class EfficientTrainer:
                 output = self.model(data)
                 # loss = F.cross_entropy(output.view(-1, output.size(-1)), target.view(-1))
                 loss = F.binary_cross_entropy_with_logits(output, target)
+                dice, iou = dice_iou(output, target)
             
             # Backward pass with mixed precision
             if self.use_amp:
@@ -97,11 +108,15 @@ class EfficientTrainer:
                 self.optimizer.step()
                 
             total_loss += loss.item()
-            
+            total_dice += dice
+            total_iou += iou
+            stop = time.time()
             # Logging every N steps
             # if batch_idx % 1 == 0:
-            print(f'Epoch {epoch}, Batch {batch_idx}/{num_batches}, '
-                    f'Loss: {loss.item():.4f}, LR: {self.scheduler.get_last_lr()[0]:.6f}')
+            print(f'Epoch {epoch}, Batch {batch_idx}/{num_batches},' 
+                  f'Loss: {loss.item():.4f}, LR: {self.scheduler.get_last_lr()[0]:.6f},'
+                  f'F1: {total_dice:.4f}, Iou: {total_iou:.4f},'
+                  f'Batch time: {stop-start:.2f} seconds')
                 
             self.scheduler.step()
         return total_loss / num_batches
@@ -116,9 +131,10 @@ class EfficientTrainer:
             data, target = data.to(self.device, non_blocking=True), \
                           target.to(self.device, non_blocking=True)
             
-            with autocast() if self.use_amp else nullcontext():
+            with autocast(self.device) if self.use_amp else nullcontext():
                 output = self.model(data)
-                loss = F.cross_entropy(output.view(-1, output.size(-1)), target.view(-1))
+                # loss = F.cross_entropy(output.view(-1, output.size(-1)), target.view(-1))
+                loss = F.binary_cross_entropy_with_logits(output, target)
                 
             total_loss += loss.item()
             

@@ -47,6 +47,9 @@ def parse_example(serialized_example):
     return image.numpy(), mask.numpy()
 
 def convert_tfrecord_to_pt(tfrecord_path, output_path):
+    '''
+    Converts .tfrecord to .pt. 
+    '''
     os.makedirs(output_path, exist_ok=True)
     dataset = tf.data.TFRecordDataset(tfrecord_path, compression_type="GZIP")
 

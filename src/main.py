@@ -19,15 +19,15 @@ config = {
 
 def main(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = UNetWithSkips()
-    print(model)
+    model = UNetWithSkips().to(device=device)
+    # print(model)
     train, val = get_dataloaders(config)
     trainer = EfficientTrainer(model=model,
                                train_loader=train,
                                val_loader=val,
                                device=device,
                                config=config)
-    print(config)
+    # print(config)
     for i in range(config['num_epochs']):
         trainer.train_epoch(i)
         trainer.validate()
