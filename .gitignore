@@ -5,4 +5,6 @@
 *.pth
 *.h5
 *.pt
+*.pdf
 __pycache__
+checkpoints/

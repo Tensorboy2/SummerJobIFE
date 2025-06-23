@@ -10,7 +10,7 @@ config = {
         'batch_size':64,
         'use_amp':True,
         'compile':True,
-        'lr':1e-4,
+        'lr':1e-2,
         'weight_decay':0.05,
         'num_epochs':2,
         'warmup_steps':10,
@@ -31,7 +31,8 @@ def main(config):
     # print(config)
     for i in range(config['num_epochs']):
         trainer.train_epoch(i)
-        trainer.validate()
+        avg_loss, avg_dice, avg_iou = trainer.validate(i)
+        trainer.save_checkpoint(i,avg_loss,avg_iou,avg_dice,'src/checkpoints/')
 
 if __name__ == '__main__':
     main(config)

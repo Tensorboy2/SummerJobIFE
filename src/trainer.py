@@ -4,6 +4,9 @@ from torch.amp import autocast, GradScaler
 import math
 from contextlib import nullcontext
 import time
+from datetime import datetime
+import os
+
 
 @torch.jit.script
 def dice_iou(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-6) -> tuple[float, float]:
@@ -75,6 +78,7 @@ class EfficientTrainer:
         total_loss = 0
         total_dice = 0
         total_iou = 0
+        total_class = 0
         num_batches = len(self.train_loader)
         
         # Set epoch for distributed sampler
@@ -90,10 +94,18 @@ class EfficientTrainer:
             
             # Mixed precision context
             with autocast(self.device) if self.use_amp else nullcontext():
-                output = self.model(data)
-                # loss = F.cross_entropy(output.view(-1, output.size(-1)), target.view(-1))
-                loss = F.binary_cross_entropy_with_logits(output, target)
-                dice, iou = dice_iou(output, target)
+                seg_out, class_out = self.model(data)
+                # print(seg_out.shape)
+                # Compute losses
+                bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
+                dice_loss_val, iou = dice_iou(seg_out, target)
+
+                # Binary classification target: 1 if any foreground exists
+                has_mask = (target.sum(dim=(1, 2, 3)) > 0).float()
+                class_loss = F.binary_cross_entropy_with_logits(class_out.squeeze(), has_mask)
+
+                # Combine
+                loss = bce_loss + dice_loss_val + 0.1 * class_loss
             
             # Backward pass with mixed precision
             if self.use_amp:
@@ -108,21 +120,30 @@ class EfficientTrainer:
                 self.optimizer.step()
                 
             total_loss += loss.item()
-            total_dice += dice
+            total_dice += dice_loss_val
             total_iou += iou
+            total_class += class_loss
             stop = time.time()
             # Logging every N steps
             # if batch_idx % 1 == 0:
-            print(f'Epoch {epoch}, Batch {batch_idx}/{num_batches},' 
-                  f'Loss: {loss.item():.4f}, LR: {self.scheduler.get_last_lr()[0]:.6f},'
-                  f'F1: {total_dice:.4f}, Iou: {total_iou:.4f},'
-                  f'Batch time: {stop-start:.2f} seconds')
+            print(f'\nEpoch {epoch}, Batch {batch_idx}/{num_batches},\n' 
+                  f'Loss: {loss.item():.6f}, LR: {self.scheduler.get_last_lr()[0]:.5f},\n'
+                  f'F1: {dice_loss_val:.6f}, Iou: {iou:.6f},\n'
+                  f'Class loss: {class_loss:.3f}\n'
+                  f'Batch time: {stop-start:.2f} seconds\n')
                 
             self.scheduler.step()
-        return total_loss / num_batches
+        
+        avg_loss = total_loss / num_batches
+        avg_iou = total_iou / num_batches
+        avg_dice = total_dice / num_batches
+
+        print(f'\nTraining Summary: Epoch: {epoch}, Avg Loss: {avg_loss:.6f}, '
+            f'Avg Dice: {avg_dice:.6f}, Avg IoU: {avg_iou:.6f}\n')
+        return avg_loss, avg_dice, avg_iou
     
     @torch.no_grad()
-    def validate(self):
+    def validate(self,epoch):
         self.model.eval()
         total_loss = 0
         total_dice = 0
@@ -130,32 +151,48 @@ class EfficientTrainer:
         num_batches = len(self.val_loader)
 
         for batch_idx, (data, target) in enumerate(self.val_loader):
+            start = time.time()
+
             data, target = data.to(self.device, non_blocking=True), \
                         target.to(self.device, non_blocking=True)
 
             with autocast(self.device) if self.use_amp else nullcontext():
-                output = self.model(data)
-                loss = F.binary_cross_entropy_with_logits(output, target)
-                dice, iou = dice_iou(output, target)
+                seg_out, class_out = self.model(data)
+                # print(seg_out.shape)
+                # Compute losses
+                bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
+                dice_loss_val, iou = dice_iou(seg_out, target)
+
+                # Binary classification target: 1 if any foreground exists
+                has_mask = (target.sum(dim=(1, 2, 3)) > 0).float()
+                class_loss = F.binary_cross_entropy_with_logits(class_out.squeeze(), has_mask)
+
+                # Combine
+                loss = bce_loss + dice_loss_val + 0.1 * class_loss
 
             total_loss += loss.item()
-            total_dice += dice
+            total_dice += dice_loss_val
             total_iou += iou
+            stop = time.time()
 
-            print(f'Validation Batch {batch_idx}/{num_batches}, '
-                f'Loss: {loss.item():.4f}, Dice: {dice:.4f}, IoU: {iou:.4f}')
+            print(f'Epoch {epoch}, Validation Batch {batch_idx}/{num_batches},' 
+                  f'Loss: {loss.item():.6f},'
+                  f'F1: {dice_loss_val:.6f}, Iou: {iou:.6f},'
+                  f'Batch time: {stop-start:.2f} seconds')
+            # print(f'Validation Batch {batch_idx}/{num_batches}, '
+            #     f'Loss: {loss.item():.4f}, Dice: {dice:.4f}, IoU: {iou:.4f}')
 
         avg_loss = total_loss / num_batches
         avg_dice = total_dice / num_batches
         avg_iou = total_iou / num_batches
 
-        print(f'\nValidation Summary: Avg Loss: {avg_loss:.4f}, '
+        print(f'\nValidation Summary: Epoch: {epoch}, Avg Loss: {avg_loss:.4f}, '
             f'Avg Dice: {avg_dice:.4f}, Avg IoU: {avg_iou:.4f}\n')
 
         return avg_loss, avg_dice, avg_iou
 
     
-    def save_checkpoint(self, epoch, loss, filepath):
+    def save_checkpoint(self, epoch, loss, iou, dice, folderpath):
         """Efficient checkpointing"""
         checkpoint = {
             'epoch': epoch,
@@ -164,11 +201,16 @@ class EfficientTrainer:
             'scheduler_state_dict': self.scheduler.state_dict(),
             'scaler_state_dict': self.scaler.state_dict(),
             'loss': loss,
+            'iou': iou,
+            'dice': dice,
             'config': self.config
         }
-        
+
+        now = datetime.now()
+        formatted = now.strftime("%Y-%m-%d_%H:%M:%S")
+
         # Async saving to avoid blocking training
-        torch.save(checkpoint, filepath)
+        torch.save(checkpoint, os.path.join(folderpath,formatted))
 
 # if __name__ == '__main__':
 #     trainer = EfficientTrainer()

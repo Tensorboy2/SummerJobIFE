@@ -8,3 +8,4 @@ The code will include usage of Google earth engine and use deep learning to iden
 ## Notes
 - The Landsat 8 (30m x 30m) has too low resolution to show the solar plants. (17.8.2025) 
 - Yang et al. dataset is tensorflow formed, so must use tensorflow on those samples.
+- To train network on cpu use: mini unet, amp, compile

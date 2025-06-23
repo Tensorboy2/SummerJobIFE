@@ -60,13 +60,21 @@ class UNetWithSkips(nn.Module):
         return self.final(x)
 
 class MiniUNet(nn.Module):
+    '''
+    Mini U-net module for image segmentation.
+    '''
     def __init__(self, in_ch=12, out_ch=1):
         super().__init__()
         self.enc1 = DoubleConv(in_ch, 16)
         self.enc2 = DoubleConv(16, 32)
         self.pool = nn.MaxPool2d(2)
-
         self.bottleneck = DoubleConv(32, 64)
+
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),  # [B, 64, 1, 1]
+            nn.Flatten(),                  # [B, 64]
+            nn.Linear(64, 1)               # [B, 1] -> logits
+        )
 
         self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)
         self.dec1 = DoubleConv(64, 32)
@@ -81,10 +89,12 @@ class MiniUNet(nn.Module):
         x2 = self.enc2(self.pool(x1))  # [B, 32, H/2, W/2]
         x3 = self.bottleneck(self.pool(x2))  # [B, 64, H/4, W/4]
 
+        cl = self.classifier(x3)
+
         x = self.up1(x3)           # [B, 32, H/2, W/2]
         x = self.dec1(torch.cat([x, x2], dim=1))
 
         x = self.up2(x)            # [B, 16, H, W]
         x = self.dec2(torch.cat([x, x1], dim=1))
-
-        return self.final(x)
+        seg=self.final(x)
+        return seg,cl
