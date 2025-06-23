@@ -31,7 +31,7 @@ class EfficientTrainer:
         self.config = config
         
         # Mixed precision setup
-        self.scaler = GradScaler()
+        self.scaler = GradScaler(device=self.device)
         self.use_amp = config.get('use_amp', True)
         
         # Optimizer with proper weight decay
@@ -125,20 +125,35 @@ class EfficientTrainer:
     def validate(self):
         self.model.eval()
         total_loss = 0
+        total_dice = 0
+        total_iou = 0
         num_batches = len(self.val_loader)
-        
-        for data, target in self.val_loader:
+
+        for batch_idx, (data, target) in enumerate(self.val_loader):
             data, target = data.to(self.device, non_blocking=True), \
-                          target.to(self.device, non_blocking=True)
-            
+                        target.to(self.device, non_blocking=True)
+
             with autocast(self.device) if self.use_amp else nullcontext():
                 output = self.model(data)
-                # loss = F.cross_entropy(output.view(-1, output.size(-1)), target.view(-1))
                 loss = F.binary_cross_entropy_with_logits(output, target)
-                
+                dice, iou = dice_iou(output, target)
+
             total_loss += loss.item()
-            
-        return total_loss / num_batches
+            total_dice += dice
+            total_iou += iou
+
+            print(f'Validation Batch {batch_idx}/{num_batches}, '
+                f'Loss: {loss.item():.4f}, Dice: {dice:.4f}, IoU: {iou:.4f}')
+
+        avg_loss = total_loss / num_batches
+        avg_dice = total_dice / num_batches
+        avg_iou = total_iou / num_batches
+
+        print(f'\nValidation Summary: Avg Loss: {avg_loss:.4f}, '
+            f'Avg Dice: {avg_dice:.4f}, Avg IoU: {avg_iou:.4f}\n')
+
+        return avg_loss, avg_dice, avg_iou
+
     
     def save_checkpoint(self, epoch, loss, filepath):
         """Efficient checkpointing"""

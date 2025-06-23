@@ -58,3 +58,33 @@ class UNetWithSkips(nn.Module):
         x = self.dec1(torch.cat([x, x1], dim=1))
 
         return self.final(x)
+
+class MiniUNet(nn.Module):
+    def __init__(self, in_ch=12, out_ch=1):
+        super().__init__()
+        self.enc1 = DoubleConv(in_ch, 16)
+        self.enc2 = DoubleConv(16, 32)
+        self.pool = nn.MaxPool2d(2)
+
+        self.bottleneck = DoubleConv(32, 64)
+
+        self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)
+        self.dec1 = DoubleConv(64, 32)
+
+        self.up2 = nn.ConvTranspose2d(32, 16, 2, stride=2)
+        self.dec2 = DoubleConv(32, 16)
+
+        self.final = nn.Conv2d(16, out_ch, 1)
+
+    def forward(self, x):
+        x1 = self.enc1(x)          # [B, 16, H, W]
+        x2 = self.enc2(self.pool(x1))  # [B, 32, H/2, W/2]
+        x3 = self.bottleneck(self.pool(x2))  # [B, 64, H/4, W/4]
+
+        x = self.up1(x3)           # [B, 32, H/2, W/2]
+        x = self.dec1(torch.cat([x, x2], dim=1))
+
+        x = self.up2(x)            # [B, 16, H, W]
+        x = self.dec2(torch.cat([x, x1], dim=1))
+
+        return self.final(x)

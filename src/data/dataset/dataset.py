@@ -45,9 +45,9 @@ def get_dataloaders(config):
     val_data_loader = DataLoader(
         val_dataset,
         batch_size=config['batch_size'],
-        num_workers=2,  
+        num_workers=1,  
         pin_memory=True,
-        prefetch_factor=2,
+        prefetch_factor=1,
         persistent_workers=True,
         shuffle=False,
         drop_last=False  # Drop last incomplete batch for training

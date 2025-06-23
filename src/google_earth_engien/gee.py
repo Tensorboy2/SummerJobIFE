@@ -3,69 +3,50 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
-import tensorflow as tf
-from tensorflow.keras import layers, models
 
-# ==== Define your ResNet18 model architecture ====
-def residual_block(x, filters, downsample=False):
-    shortcut = x
-    stride = 2 if downsample else 1
+def get_mask(tiff, bands):
+    '''
+    Returns a binary mask for likely water-based solar panels:
+    1. Detect water using MNDWI
+    2. Remove vegetation using NDVI
+    3. [Optional] Restrict based on brightness/flatness
+    '''
+    # Extract bands
+    blue = tiff[:, :, bands['blue']]
+    green = tiff[:, :, bands['green']]
+    red = tiff[:, :, bands['red']]
+    nir = tiff[:, :, bands['nir']]
+    swir_1 = tiff[:, :, bands['swir_1']]
+    swir_2 = tiff[:, :, bands['swir_2']]
+    # swir_2 not used here
 
-    x = layers.Conv2D(filters, 3, strides=stride, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
+    BI_green = (blue - green) / (blue + green + 1e-6) > -0.07
+    BI_red   = (blue - red) / (blue + red + 1e-6) > -0.05
+    NDBI     = (swir_1 - nir) / (swir_1 + nir + 1e-6) > 0.02
+    NSDSI    = (swir_1 - swir_2) / (swir_1 + swir_2 + 1e-6) > 0.12
 
-    x = layers.Conv2D(filters, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
+    mask = (BI_green.astype(int) &
+            # (swir_1.astype(int)>0.07) &
+        BI_red.astype(int) &
+        NDBI.astype(int) &
+        NSDSI.astype(int))
 
-    if downsample or x.shape[-1] != shortcut.shape[-1]:
-        shortcut = layers.Conv2D(filters, 1, strides=stride, padding='same')(shortcut)
-        shortcut = layers.BatchNormalization()(shortcut)
-
-    x = layers.Add()([x, shortcut])
-    x = layers.ReLU()(x)
-    return x
-
-def build_model(input_shape=(256, 256, 12)):
-    inputs = tf.keras.Input(shape=input_shape)
-    
-    x = layers.Conv2D(64, 7, strides=2, padding='same')(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling2D(pool_size=3, strides=2, padding='same')(x)
-
-    for filters in [64, 128, 256, 512]:
-        x = residual_block(x, filters, downsample=True)
-        x = residual_block(x, filters)
-
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(1, activation='sigmoid', dtype='float32')(x)  # Cast output back to float32
-
-    return tf.keras.Model(inputs, x)
-
-# ==== Load model weights ====
-model = build_model()
-model.load_weights("src/google_earth_engien/resnet18_solar_classifier.h5")
-print("✅ Model loaded successfully.")
+    return mask
 
 # ==== Configuration ====
 root = os.path.dirname(__file__)
-folder = 'downloaded_s2_images'
+folder = 'downloaded_s2_annual_composites'
 
 dummy_locations = [
     {"lon": 139.3767, "lat": 35.9839},
     {"lon": 6.0155, "lat": 52.4872},
     {"lon": 6.1405, "lat": 52.4844},
     {"lon": 118.47251461553486, "lat": 30.108833377834003},
-    {"lon": 120.29968790343396, "lat": -28.89431111370441},
-    {"lon": -79.31495138076491, "lat": 42.48761799300101},
-    {"lon": 84.997693868105, "lat": 21.204732281641306},
-    {"lon": 54.04713906905101, "lat": 49.372306330493025},
-    {"lon": 64.02382861448243, "lat": 34.9633291732159},
-    {"lon": 138.63609948288163, "lat": -18.558295454625195},
-    {"lon": -97.03152541417012, "lat": 59.30947000342317},
-    {"lon": -87.00093695169154, "lat": 31.31616911969064}
 ]
+bands = {
+    'blue': 1, 'green': 2, 'red': 3, 'nir': 7, 'swir_1': 10, 'swir_2':11 
+}
+
 
 # ==== Plot setup ====
 num_images = len(dummy_locations)
@@ -73,46 +54,55 @@ n_cols = 4
 n_rows = math.ceil(num_images / n_cols)
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
 axes = axes.flatten()
+years = ['2021','2022','2023']
 
 # ==== Main loop ====
 for i, loc in enumerate(dummy_locations):
     ax = axes[i]
     lat, lon = loc['lat'], loc['lon']
     title = f"Lat: {lat:.2f}\nLon: {lon:.2f}"
-    image_filename = f"{lat:.4f}_{lon:.4f}_multispectral.tif"
-    image_path = os.path.join(root, folder, image_filename)
 
-    try:
+    # Store yearly masks
+    yearly_masks = []
+
+    for year in years:
+        image_filename = f"{lat:.4f}_{lon:.4f}_{year}_multispectral.tif"
+        image_path = os.path.join(root, folder, image_filename)
+
         if os.path.exists(image_path):
             img = tifffile.imread(image_path)
 
             if img.shape != (256, 256, 12):
                 raise ValueError(f"Expected shape (256, 256, 12), got {img.shape}")
 
-            # Preprocessing for RGB display (B4, B3, B2 = indices 3, 2, 1)
-            rgb_display = img[:, :, [3, 2, 1]]
-            rgb_display = np.clip(rgb_display, 0, 0.3) / (0.3)
+            mask = get_mask(img, bands)
+            yearly_masks.append(mask)
 
-            # Preprocessing for model
-            x = img.astype(np.float32)
-            x = np.expand_dims(x, axis=0)
-
-            # Inference
-            pred = model.predict(x)[0][0]
-
-            ax.imshow(rgb_display)
-            ax.set_title(f"{title}\nPred: {pred:.6f} ", fontsize=9)
-            ax.axis('off')
-
-        else:
-            ax.set_title(f"File Not Found\n{title}", fontsize=10, color='red')
-            ax.axis('off')
-            print(f"❌ File not found: {image_path}")
-
-    except Exception as e:
-        ax.set_title(f"Error\n{title}", fontsize=10, color='red')
+    if not yearly_masks:
+        ax.set_title(f"{title}\n(No Data)", fontsize=8)
         ax.axis('off')
-        print(f"⚠️ Error processing {image_filename}: {e}")
+        continue
+
+    # === Combine yearly masks ===
+    mask_stack = np.stack(yearly_masks, axis=0)  # Shape: (num_years, H, W)
+    mask_sum = mask_stack.mean(axis=0)            # Count of active years per pixel
+
+    # Pick a threshold (e.g., 3 out of 5 years)
+    consistency_threshold = 0.3
+    consistent_mask = mask_sum >= consistency_threshold
+
+    # Load any image for visualization (e.g., the latest year)
+    img = tifffile.imread(os.path.join(root, folder, f"{lat:.4f}_{lon:.4f}_{years[-1]}_multispectral.tif"))
+    rgb_display = img[:, :, [3, 2, 1]]
+    rgb_display = np.clip(rgb_display, 0, 0.3) / (0.3)
+
+    overlay = rgb_display.copy()
+    overlay[consistent_mask] = [1.0, 0.0, 0.0]  # Red highlight
+
+    ax.imshow(overlay)
+    ax.set_title(f"{title}\nConsistent ({consistency_threshold}+ years)", fontsize=8)
+    ax.axis('off')
+
 
 # Hide unused axes
 for j in range(i + 1, len(axes)):
