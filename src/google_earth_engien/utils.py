@@ -423,14 +423,21 @@ class Visualizer:
             output_path: Output path for the plot
         """
         num_images = len(locations)
-        n_cols = 2
-        n_rows = math.ceil(num_images / n_cols)
         
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.4, 6.4)) # Latex fig 6.4 x 6.4
-        if n_rows == 1:
-            axes = [axes] if n_cols == 1 else axes
+        if num_images == 1:
+            # Single location - use full figure
+            fig, ax = plt.subplots(1, 1, figsize=(6.4, 6.4))
+            axes = [ax]
         else:
-            axes = axes.flatten()
+            # Multiple locations - use subplots
+            n_cols = 2
+            n_rows = math.ceil(num_images / n_cols)
+            
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.4, 6.4))
+            if n_rows == 1:
+                axes = [axes] if n_cols == 1 else axes
+            else:
+                axes = axes.flatten()
 
         for i, loc in enumerate(locations):
             if i >= len(axes):
@@ -438,24 +445,37 @@ class Visualizer:
                 
             ax = axes[i]
             lat, lon = loc['lat'], loc['lon']
-            title = f"Lat: {lat:.2f} Lon: {lon:.2f}"
+            title = f"Lat: {lat:.4f}, Lon: {lon:.4f}"
 
             try:
                 overlay = self._create_overlay(lat, lon, years, data_folder)
                 if overlay is not None:
                     ax.imshow(overlay)
-                    ax.set_title(title, fontsize=12)
+                    # if num_images == 1:
+                        # For single plot, use a larger, more prominent title
+                        # ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
+                    # else:
+                        # ax.set_title(title, fontsize=12)
                 else:
-                    ax.set_title(f"{title}\n(No Data)", fontsize=12)
+                    no_data_title = f"{title}\n(No Data)"
+                    if num_images == 1:
+                        ax.set_title(no_data_title, fontsize=16, fontweight='bold', pad=20)
+                    else:
+                        ax.set_title(no_data_title, fontsize=12)
             except Exception as e:
                 print(f"Error processing location {lat}, {lon}: {e}")
-                ax.set_title(f"{title}\n(Error)", fontsize=12)
+                error_title = f"{title}\n(Error)"
+                if num_images == 1:
+                    ax.set_title(error_title, fontsize=16, fontweight='bold', pad=20)
+                else:
+                    ax.set_title(error_title, fontsize=12)
             
             ax.axis('off')
 
-        # Hide unused axes
-        for j in range(len(locations), len(axes)):
-            fig.delaxes(axes[j])
+        # Hide unused axes (only relevant for multiple locations)
+        if num_images > 1:
+            for j in range(len(locations), len(axes)):
+                fig.delaxes(axes[j])
 
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')

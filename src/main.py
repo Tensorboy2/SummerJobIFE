@@ -1,38 +1,70 @@
 import torch
-import torch.optim as to
+# import torch.optim as to
+import os
 
 from trainer import EfficientTrainer
-from models.torch.u_net import UNetWithSkips, MiniUNet
+from models.torch.u_net import UNet, HalfUNet
 from data.dataset.dataset import get_dataloaders
 
+def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10):
+    """Complete training loop with checkpointing and plotting"""
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    best_dice = 0.0
+    
+    for epoch in range(1, num_epochs + 1):
+        print(f"\n{'='*50}")
+        print(f"EPOCH {epoch}/{num_epochs}")
+        print(f"{'='*50}")
+        
+        # Train
+        train_metrics = trainer.train_epoch(epoch)
+        
+        # Validate
+        val_metrics = trainer.validate(epoch)
+        
+        # Save checkpoint for best model
+        if val_metrics['dice_score'] > best_dice:
+            best_dice = val_metrics['dice_score']
+            trainer.save_checkpoint(epoch, val_metrics, checkpoint_dir)
+            print(f"New best Dice score: {best_dice:.4f}")
+        
+        # Regular checkpointing
+        if epoch % save_every == 0:
+            trainer.save_checkpoint(epoch, val_metrics, checkpoint_dir)
+        
+        # Plot metrics
+        if epoch % plot_every == 0:
+            plot_path = os.path.join(checkpoint_dir, f'metrics_epoch_{epoch}.png')
+            trainer.plot_metrics(save_path=plot_path)
 config = {
         'val_ratio':0.2,
-        'batch_size':64,
-        'use_amp':True,
-        'compile':True,
-        'lr':1e-2,
-        'weight_decay':0.05,
-        'num_epochs':2,
-        'warmup_steps':10,
+        'batch_size':8,
+        'lr': 1e-4,
+        'num_epochs': 100,
+        'warmup_steps': 100,
         'decay': 'cosine',
+        'weight_decay': 0.05,
+        'use_amp': True,
+        'compile': True,
+        'max_grad_norm': 1.0,
+        'bce_weight': 0.4,    # Adjust based on your needs
+        'dice_weight': 0.6,   # Higher weight for spatial coherence
     }
 
 def main(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = MiniUNet().to(device=device)
-    # model = UNetWithSkips().to(device=device)
-    # print(model)
+    model = UNet(in_ch=12).to(device=device)
     train, val = get_dataloaders(config)
     trainer = EfficientTrainer(model=model,
                                train_loader=train,
                                val_loader=val,
                                device=device,
                                config=config)
-    # print(config)
-    for i in range(config['num_epochs']):
-        trainer.train_epoch(i)
-        avg_loss, avg_dice, avg_iou = trainer.validate(i)
-        trainer.save_checkpoint(i,avg_loss,avg_iou,avg_dice,'src/checkpoints/')
+    
+    train_model(trainer=trainer,
+                num_epochs=config['num_epochs'],
+                checkpoint_dir='src/checkpoints')
 
 if __name__ == '__main__':
     main(config)

@@ -1,100 +1,83 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class DoubleConv(nn.Module):
-    '''
-    Bottleneck block for U-net
-    '''
     def __init__(self, in_ch, out_ch):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, 3, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
             nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
         )
 
     def forward(self, x):
         return self.conv(x)
 
-class UNetWithSkips(nn.Module):
-    '''
-    U-net with skip connections.
-    '''
-    def __init__(self, in_ch=12, out_ch=1):
+class UNet(nn.Module):
+    def __init__(self, in_ch=3, out_ch=1):
         super().__init__()
-        self.enc1 = DoubleConv(in_ch, 64)
-        self.enc2 = DoubleConv(64, 128)
-        self.enc3 = DoubleConv(128, 256)
+        self.enc1 = DoubleConv(in_ch, 32)
+        self.enc2 = DoubleConv(32, 64)
+        self.enc3 = DoubleConv(64, 128)
+        self.enc4 = DoubleConv(128, 256)
+
         self.pool = nn.MaxPool2d(2)
 
         self.bottleneck = DoubleConv(256, 512)
 
-        self.up3 = nn.ConvTranspose2d(512, 256, 2, stride=2)
-        self.dec3 = DoubleConv(512, 256)
-
-        self.up2 = nn.ConvTranspose2d(256, 128, 2, stride=2)
-        self.dec2 = DoubleConv(256, 128)
-
-        self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
-        self.dec1 = DoubleConv(128, 64)
-
-        self.final = nn.Conv2d(64, out_ch, 1)
-
-    def forward(self, x):
-        x1 = self.enc1(x)
-        x2 = self.enc2(self.pool(x1))
-        x3 = self.enc3(self.pool(x2))
-        x4 = self.bottleneck(self.pool(x3))
-
-        x = self.up3(x4)
-        x = self.dec3(torch.cat([x, x3], dim=1))
-
-        x = self.up2(x)
-        x = self.dec2(torch.cat([x, x2], dim=1))
-
-        x = self.up1(x)
-        x = self.dec1(torch.cat([x, x1], dim=1))
-
-        return self.final(x)
-
-class MiniUNet(nn.Module):
-    '''
-    Mini U-net module for image segmentation.
-    '''
-    def __init__(self, in_ch=12, out_ch=1):
-        super().__init__()
-        self.enc1 = DoubleConv(in_ch, 16)
-        self.enc2 = DoubleConv(16, 32)
-        self.pool = nn.MaxPool2d(2)
-        self.bottleneck = DoubleConv(32, 64)
-
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),  # [B, 64, 1, 1]
-            nn.Flatten(),                  # [B, 64]
-            nn.Linear(64, 1)               # [B, 1] -> logits
-        )
-
+        self.up4 = nn.ConvTranspose2d(512, 256, 2, stride=2)
+        self.dec4 = DoubleConv(512, 256)
+        self.up3 = nn.ConvTranspose2d(256, 128, 2, stride=2)
+        self.dec3 = DoubleConv(256, 128)
+        self.up2 = nn.ConvTranspose2d(128, 64, 2, stride=2)
+        self.dec2 = DoubleConv(128, 64)
         self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)
         self.dec1 = DoubleConv(64, 32)
 
-        self.up2 = nn.ConvTranspose2d(32, 16, 2, stride=2)
-        self.dec2 = DoubleConv(32, 16)
-
-        self.final = nn.Conv2d(16, out_ch, 1)
+        self.final = nn.Conv2d(32, out_ch, kernel_size=1)
 
     def forward(self, x):
-        x1 = self.enc1(x)          # [B, 16, H, W]
-        x2 = self.enc2(self.pool(x1))  # [B, 32, H/2, W/2]
-        x3 = self.bottleneck(self.pool(x2))  # [B, 64, H/4, W/4]
+        e1 = self.enc1(x)
+        e2 = self.enc2(self.pool(e1))
+        e3 = self.enc3(self.pool(e2))
+        e4 = self.enc4(self.pool(e3))
+        b = self.bottleneck(self.pool(e4))
 
-        cl = self.classifier(x3)
+        d4 = self.dec4(torch.cat([self.up4(b), e4], dim=1))
+        d3 = self.dec3(torch.cat([self.up3(d4), e3], dim=1))
+        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
+        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
+        return self.final(d1)
 
-        x = self.up1(x3)           # [B, 32, H/2, W/2]
-        x = self.dec1(torch.cat([x, x2], dim=1))
 
-        x = self.up2(x)            # [B, 16, H, W]
-        x = self.dec2(torch.cat([x, x1], dim=1))
-        seg=self.final(x)
-        return seg,cl
+class HalfUNet(nn.Module):
+    def __init__(self, in_ch=3, out_ch=1, pooling='avg'):
+        super().__init__()
+        self.enc1 = DoubleConv(in_ch, 64)
+        self.enc2 = DoubleConv(64, 128)
+        self.enc3 = DoubleConv(128, 256)
+        self.enc4 = DoubleConv(256, 512)
+        self.pool = nn.MaxPool2d(2)
+
+        self.bottleneck = DoubleConv(512, 1024)
+
+        self.pooling = nn.AdaptiveAvgPool2d(1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
+
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, out_ch)
+        )
+
+    def forward(self, x):
+        x = self.enc1(x)
+        x = self.enc2(self.pool(x))
+        x = self.enc3(self.pool(x))
+        x = self.enc4(self.pool(x))
+        x = self.bottleneck(self.pool(x))
+        x = self.pooling(x)  # shape: (B, 1024, 1, 1)
+        return self.classifier(x)
