@@ -1,4 +1,4 @@
-from yolo_utils.backbone import ConvBNAct, SimpleYOLOBackbone
+from models.torch.yolo_utils.backbone import ConvBNAct, SimpleYOLOBackbone
 import torch.nn as nn
 import torch
 

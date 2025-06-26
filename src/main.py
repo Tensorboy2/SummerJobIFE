@@ -4,7 +4,8 @@ import os
 
 from trainer import EfficientTrainer
 from models.torch.u_net import UNet, HalfUNet
-from data.dataset.dataset import get_dataloaders
+from models.torch.YOLOv8 import YOLOMultiTask
+from models.torch.yolo_utils.data import get_dataloaders
 
 def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10):
     """Complete training loop with checkpointing and plotting"""
@@ -39,7 +40,7 @@ def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10
             trainer.plot_metrics(save_path=plot_path)
 config = {
         'val_ratio':0.2,
-        'batch_size':8,
+        'batch_size':1,
         'lr': 1e-4,
         'num_epochs': 100,
         'warmup_steps': 100,
@@ -54,7 +55,8 @@ config = {
 
 def main(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = UNet(in_ch=12).to(device=device)
+    # model = UNet(in_ch=12).to(device=device)
+    model = YOLOMultiTask(in_ch=12,input_size=256).to(device=device)
     train, val = get_dataloaders(config)
     trainer = EfficientTrainer(model=model,
                                train_loader=train,

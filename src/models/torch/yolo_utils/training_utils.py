@@ -1,8 +1,8 @@
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from models.torch.yolo_utils.data import RandomMultiTaskDataset
-from heads import YOLOMultiTask
-from loss import multitask_loss
+from models.torch.yolo_utils.heads import YOLOMultiTask
+from models.torch.yolo_utils.loss import multitask_loss
 from collections import defaultdict
 import torch
 

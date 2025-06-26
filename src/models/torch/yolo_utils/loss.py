@@ -1,40 +1,27 @@
 import torch.nn.functional as F
-from heads import assign_targets,YOLOMultiTask
-from models.torch.yolo_utils.data import RandomMultiTaskDataset
+from models.torch.yolo_utils.heads import assign_targets
+from models.torch.yolo_utils.data import PTMultiTaskDataset
 
-def multitask_loss(det_pred, seg_pred, bbox, label, mask, lambda_bbox=5, lambda_seg=1, lambda_obj=1, lambda_cls=1):
-    """
-    det_pred: [B, 6, 16, 16]
-    seg_pred: [B, 1, 128, 128]
-    bbox:     [B, 4]
-    label:    [B]
-    mask:     [B, 1, 128, 128]
-    """
+def multitask_loss(det_pred, seg_pred, bbox, label, mask, 
+                   lambda_bbox=5, lambda_seg=1, lambda_obj=1, lambda_cls=1):
 
-    # === Detection loss ===
-    B = det_pred.size(0)
-    target_map = assign_targets(bbox, label, feat_size=16, img_size=128)
-    obj_mask = target_map[:, 4:5]  # where objectness = 1
+    B, _, Hf, Wf = det_pred.shape
+    target_map = assign_targets(bbox, label, feat_size=Hf, img_size=128)  # dynamic feat_size
 
-    # Bounding box (only where obj_mask == 1)
+    assert target_map.shape == det_pred.shape, \
+        f"Mismatch: pred {det_pred.shape}, target {target_map.shape}"
+
+    obj_mask = target_map[:, 4:5]
+
     bbox_loss = F.mse_loss(det_pred[:, 0:4] * obj_mask, target_map[:, 0:4] * obj_mask)
+    obj_loss  = F.binary_cross_entropy_with_logits(det_pred[:, 4:5], target_map[:, 4:5])
+    cls_loss  = F.binary_cross_entropy_with_logits(det_pred[:, 5:6], target_map[:, 5:6])
+    seg_loss  = F.binary_cross_entropy(seg_pred, mask)
 
-    # Objectness (BCE)
-    obj_loss = F.binary_cross_entropy_with_logits(det_pred[:, 4:5], target_map[:, 4:5])
-
-    # Class loss (BCE, binary classification)
-    cls_loss = F.binary_cross_entropy_with_logits(det_pred[:, 5:6], target_map[:, 5:6])
-
-    # === Segmentation loss ===
-    seg_loss = F.binary_cross_entropy(seg_pred, mask)
-
-    # === Total loss ===
-    total = (
-        lambda_bbox * bbox_loss +
-        lambda_obj * obj_loss +
-        lambda_cls * cls_loss +
-        lambda_seg * seg_loss
-    )
+    total = (lambda_bbox * bbox_loss +
+             lambda_obj  * obj_loss +
+             lambda_cls  * cls_loss +
+             lambda_seg  * seg_loss)
 
     return total, {
         "total": total.item(),
@@ -43,6 +30,7 @@ def multitask_loss(det_pred, seg_pred, bbox, label, mask, lambda_bbox=5, lambda_
         "cls": cls_loss.item(),
         "seg": seg_loss.item(),
     }
+
 
 
 if __name__ == '__main__':

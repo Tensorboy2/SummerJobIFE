@@ -1,6 +1,6 @@
-from yolo_utils.backbone import SimpleYOLOBackbone
-from yolo_utils.neck import SimpleNeck
-from yolo_utils.heads import DetectionHead, SegmentationHead
+from models.torch.yolo_utils.backbone import SimpleYOLOBackbone
+from models.torch.yolo_utils.neck import SimpleNeck
+from models.torch.yolo_utils.heads import DetectionHead, SegmentationHead
 import torch.nn as nn
 class YOLOMultiTask(nn.Module):
     def __init__(self, in_ch=3, input_size=128):
@@ -21,6 +21,6 @@ class YOLOMultiTask(nn.Module):
     
 
 
-if __name__ == '__main__':
-    model = YOLOMultiTask(in_ch=12,input_size=256)
+# if __name__ == '__main__':
+    # model = YOLOMultiTask(in_ch=12,input_size=256)
     # data = 

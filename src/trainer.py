@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 import json
 from collections import defaultdict
+from models.torch.yolo_utils.loss import multitask_loss
 
 @torch.jit.script
 def iou_score(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5, eps: float = 1e-6) -> torch.Tensor:
@@ -171,30 +172,37 @@ class EfficientTrainer:
         if hasattr(self.train_loader.sampler, 'set_epoch'):
             self.train_loader.sampler.set_epoch(epoch)
 
-        for batch_idx, (data, target) in enumerate(self.train_loader):
+        for batch_idx, (img, mask, bbox, label) in enumerate(self.train_loader):
             start = time.time()
-            data = data.to(self.device, non_blocking=True)
-            target = target.to(self.device, non_blocking=True)
+            img = img.to(self.device, non_blocking=True)
+            mask = mask.to(self.device, non_blocking=True)
+            bbox =bbox.to(self.device, non_blocking=True)
+            label = label.to(self.device, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
 
             # Mixed precision autocast
             context = autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext()
             with context:
-                seg_out = self.model(data)
+                det_out, seg_out = self.model(img)
 
                 # Compute losses
-                bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
-                dice_loss_val = dice_loss(seg_out, target)
+                # bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
+                # dice_loss_val = dice_loss(seg_out, target)
                 
                 # Combined loss
-                loss = self.bce_weight * bce_loss + self.dice_weight * dice_loss_val
-
+                # loss = self.bce_weight * bce_loss + self.dice_weight * dice_loss_val
+                loss, logs = multitask_loss(det_pred=det_out,
+                                      seg_pred=seg_out,
+                                      bbox=bbox,
+                                      label=label,
+                                      mask=mask)
+                
                 # Compute metrics (for monitoring)
-                with torch.no_grad():
-                    dice_score_val = dice_score(seg_out, target)
-                    iou_val = iou_score(seg_out, target)
-                    precision, recall, f1 = compute_precision_recall_f1(seg_out, target)
+                # with torch.no_grad():
+                #     dice_score_val = dice_score(seg_out, target)
+                #     iou_val = iou_score(seg_out, target)
+                #     precision, recall, f1 = compute_precision_recall_f1(seg_out, target)
 
             # Backpropagation
             if self.use_amp:
@@ -209,16 +217,16 @@ class EfficientTrainer:
                 self.optimizer.step()
 
             self.scheduler.step()
-
+            print(loss.item())
             # Accumulate metrics
             metrics['loss'] += loss.item()
-            metrics['bce'] += bce_loss.item()
-            metrics['dice_loss'] += dice_loss_val.item()
-            metrics['dice_score'] += dice_score_val.item()
-            metrics['iou'] += iou_val.item()
-            metrics['precision'] += precision.item()
-            metrics['recall'] += recall.item()
-            metrics['f1'] += f1.item()
+            # metrics['bce'] += bce_loss.item()
+            # metrics['dice_loss'] += dice_loss_val.item()
+            # metrics['dice_score'] += dice_score_val.item()
+            # metrics['iou'] += iou_val.item()
+            # metrics['precision'] += precision.item()
+            # metrics['recall'] += recall.item()
+            # metrics['f1'] += f1.item()
             
             batch_time = time.time() - start
             metrics['time'] += batch_time
@@ -227,9 +235,7 @@ class EfficientTrainer:
             if batch_idx % 1 == 0:
                 print(
                     f"Epoch {epoch}, Batch {batch_idx}/{num_batches}: "
-                    f"Loss: {loss.item():.4f} | BCE: {bce_loss.item():.4f} | "
-                    f"Dice Loss: {dice_loss_val.item():.4f} | Dice Score: {dice_score_val.item():.4f} | "
-                    f"IoU: {iou_val.item():.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f}"
+                    f"Loss: {loss.item():.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f}"
                 )
 
         # Average metrics over epoch
@@ -243,10 +249,7 @@ class EfficientTrainer:
 
         print(
             f"\nTraining Epoch {epoch} Summary:\n"
-            f"Loss: {metrics['loss']:.4f} | BCE: {metrics['bce']:.4f} | "
-            f"Dice Loss: {metrics['dice_loss']:.4f} | Dice Score: {metrics['dice_score']:.4f} | "
-            f"IoU: {metrics['iou']:.4f} | Precision: {metrics['precision']:.4f} | "
-            f"Recall: {metrics['recall']:.4f} | F1: {metrics['f1']:.4f}"
+            f"Loss: {metrics['loss']:.4f} "
         )
 
         return metrics
@@ -257,7 +260,7 @@ class EfficientTrainer:
         metrics = defaultdict(float)
         num_batches = len(self.val_loader)
 
-        for batch_idx, (data, target) in enumerate(self.val_loader):
+        for batch_idx, (img, mask, bbox, label) in enumerate(self.val_loader):
             start = time.time()
             data = data.to(self.device, non_blocking=True)
             target = target.to(self.device, non_blocking=True)
