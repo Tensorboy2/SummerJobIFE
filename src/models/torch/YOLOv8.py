@@ -1,13 +1,26 @@
-from ultralytics import YOLO
-model = YOLO("yolov8n.pt")
-results = model("https://ultralytics.com/images/bus.jpg") # Predict on an image from a URL
-# Process results (results is a list of Results objects, one for each input source)
-for result in results:
-    boxes = result.boxes # Bounding boxes
-    masks = result.masks # Segmentation masks (if using a segmentation model like yolov8n-seg.pt)
-    keypoints = result.keypoints # Keypoints (if using a pose estimation model)
-    probs = result.probs # Classification probabilities (if using a classification model)
+from yolo_utils.backbone import SimpleYOLOBackbone
+from yolo_utils.neck import SimpleNeck
+from yolo_utils.heads import DetectionHead, SegmentationHead
+import torch.nn as nn
+class YOLOMultiTask(nn.Module):
+    def __init__(self, in_ch=3, input_size=128):
+        super().__init__()
+        self.backbone = SimpleYOLOBackbone(in_ch=in_ch)
+        self.neck = SimpleNeck(128, 128)
+
+        self.det_head = DetectionHead(128, 6)    # bbox + object + class
+        self.seg_head = SegmentationHead(128, input_size)
+
+    def forward(self, x):
+        features = self.neck(self.backbone(x))  # [B, 128, 16, 16]
+
+        det_out = self.det_head(features)       # [B, 6, 16, 16]
+        seg_out = self.seg_head(features)       # [B, 1, 128, 128]
+
+        return det_out, seg_out
     
-    # Show results
-    result.show() # Display the image with predictions
-    # result.save(filename="result.jpg") # Save the image with predictions
+
+
+if __name__ == '__main__':
+    model = YOLOMultiTask(in_ch=12,input_size=256)
+    # data = 
