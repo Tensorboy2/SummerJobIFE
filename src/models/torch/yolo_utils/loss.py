@@ -6,7 +6,7 @@ def multitask_loss(det_pred, seg_pred, bbox, label, mask,
                    lambda_bbox=5, lambda_seg=1, lambda_obj=1, lambda_cls=1):
 
     B, _, Hf, Wf = det_pred.shape
-    target_map = assign_targets(bbox, label, feat_size=Hf, img_size=128)  # dynamic feat_size
+    target_map = assign_targets(bbox, label, feat_size=Hf, img_size=128)
 
     assert target_map.shape == det_pred.shape, \
         f"Mismatch: pred {det_pred.shape}, target {target_map.shape}"
@@ -16,7 +16,7 @@ def multitask_loss(det_pred, seg_pred, bbox, label, mask,
     bbox_loss = F.mse_loss(det_pred[:, 0:4] * obj_mask, target_map[:, 0:4] * obj_mask)
     obj_loss  = F.binary_cross_entropy_with_logits(det_pred[:, 4:5], target_map[:, 4:5])
     cls_loss  = F.binary_cross_entropy_with_logits(det_pred[:, 5:6], target_map[:, 5:6])
-    seg_loss  = F.binary_cross_entropy(seg_pred, mask)
+    seg_loss  = F.binary_cross_entropy_with_logits(seg_pred, mask)
 
     total = (lambda_bbox * bbox_loss +
              lambda_obj  * obj_loss +
@@ -30,6 +30,7 @@ def multitask_loss(det_pred, seg_pred, bbox, label, mask,
         "cls": cls_loss.item(),
         "seg": seg_loss.item(),
     }
+
 
 
 
