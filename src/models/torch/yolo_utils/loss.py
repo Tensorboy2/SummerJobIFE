@@ -3,7 +3,7 @@ from models.torch.yolo_utils.heads import assign_targets
 from models.torch.yolo_utils.data import PTMultiTaskDataset
 
 def multitask_loss(det_pred, seg_pred, bbox, label, mask, 
-                   lambda_bbox=5, lambda_seg=1, lambda_obj=1, lambda_cls=1):
+                   lambda_bbox=1, lambda_seg=5, lambda_obj=1, lambda_cls=1):
 
     B, _, Hf, Wf = det_pred.shape
     target_map = assign_targets(bbox, label, feat_size=Hf, img_size=128)
