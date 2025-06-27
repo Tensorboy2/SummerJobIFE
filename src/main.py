@@ -50,16 +50,16 @@ def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=1)
 config = {
         'lr': 1e-2,
         'num_epochs': 100,
-        'warmup_steps': 100,
+        'warmup_steps': 1000,
         'decay': 'cosine',
-        'weight_decay': 0.05,
+        'weight_decay': 0.1,
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
         'bce_weight': 0.4,    
         'dice_weight': 0.6,   
         'val_ratio': 0.2,
-        'batch_size':64
+        'batch_size':256
     }
 
 def main(config):
