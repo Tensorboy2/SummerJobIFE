@@ -67,6 +67,6 @@ def convert_tfrecord_to_pt(tfrecord_path, output_path):
 # Example usage:
 if __name__ == "__main__":
     # path="src/data/gz_data/solar_2022_global.tfrecord.gz"
-    input_path = "src/data/gz_data/solar_2022_global.tfrecord.gz"
+    input_path = "src/data/gz_data/solar_2023_global.tfrecord.gz"
     output_path = "src/data/processed"
     convert_tfrecord_to_pt(input_path, output_path)

@@ -7,7 +7,7 @@ from models.torch.u_net import UNet, HalfUNet
 from models.torch.YOLOv8 import YOLOMultiTask
 from models.torch.yolo_utils.data import get_dataloaders
 
-def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10):
+def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=1):
     """Complete training loop with checkpointing and plotting"""
     os.makedirs(checkpoint_dir, exist_ok=True)
     
@@ -24,9 +24,9 @@ def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10
         # Validate
         val_metrics = trainer.validate(epoch)
         
-        # Save checkpoint for best model
-        if val_metrics['dice_score'] > best_dice:
-            best_dice = val_metrics['dice_score']
+        # Save checkpoint for best model (using dice as primary metric)
+        if val_metrics['dice'] > best_dice:
+            best_dice = val_metrics['dice']
             trainer.save_checkpoint(epoch, val_metrics, checkpoint_dir)
             print(f"New best Dice score: {best_dice:.4f}")
         
@@ -38,10 +38,17 @@ def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10
         if epoch % plot_every == 0:
             plot_path = os.path.join(checkpoint_dir, f'metrics_epoch_{epoch}.png')
             trainer.plot_metrics(save_path=plot_path)
+    
+    # Final summary
+    best_metrics = trainer.get_best_metrics()
+    print(f"\n{'='*50}")
+    print("TRAINING COMPLETE - BEST METRICS:")
+    print(f"{'='*50}")
+    for metric, value in best_metrics.items():
+        print(f"{metric}: {value}")
+
 config = {
-        'val_ratio':0.2,
-        'batch_size':1,
-        'lr': 1e-4,
+        'lr': 1e-2,
         'num_epochs': 100,
         'warmup_steps': 100,
         'decay': 'cosine',
@@ -49,8 +56,10 @@ config = {
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
-        'bce_weight': 0.4,    # Adjust based on your needs
-        'dice_weight': 0.6,   # Higher weight for spatial coherence
+        'bce_weight': 0.4,    
+        'dice_weight': 0.6,   
+        'val_ratio': 0.2,
+        'batch_size':64
     }
 
 def main(config):

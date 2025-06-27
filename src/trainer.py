@@ -99,6 +99,18 @@ def compute_precision_recall_f1(pred: torch.Tensor, target: torch.Tensor, thresh
     
     return precision, recall, f1
 
+def compute_segmentation_metrics(pred, target) -> dict:
+    dice = dice_score(pred, target)
+    iou = iou_score(pred, target)
+    precision, recall, f1 = compute_precision_recall_f1(pred, target)
+    return {
+        "dice": dice.item(),
+        "iou": iou.item(),
+        "precision": precision.item(),
+        "recall": recall.item(),
+        "f1": f1.item(),
+    }
+
 class EfficientTrainer:
     """Production-ready trainer with all optimizations"""
     
@@ -149,14 +161,30 @@ class EfficientTrainer:
         # Gradient clipping
         self.max_grad_norm = config.get('max_grad_norm', 1.0)
         
-        # Metrics history for plotting
+        # Enhanced metrics history for plotting - includes all segmentation metrics
         self.train_history = {
-            'loss': [], 'bce': [], 'dice_loss': [], 'dice_score': [], 'iou': [],
-            'precision': [], 'recall': [], 'f1': []
+            'loss': [],
+            'dice': [],
+            'iou': [],
+            'precision': [],
+            'recall': [],
+            'f1': [],
+            'bbox_loss': [],
+            'obj_loss': [],
+            'cls_loss': [],
+            'seg_loss': []
         }
         self.val_history = {
-            'loss': [], 'bce': [], 'dice_loss': [], 'dice_score': [], 'iou': [],
-            'precision': [], 'recall': [], 'f1': []
+            'loss': [],
+            'dice': [],
+            'iou': [],
+            'precision': [],
+            'recall': [],
+            'f1': [],
+            'bbox_loss': [],
+            'obj_loss': [],
+            'cls_loss': [],
+            'seg_loss': []
         }
         
         # Compilation (PyTorch 2.0+)
@@ -166,6 +194,7 @@ class EfficientTrainer:
     def train_epoch(self, epoch):
         self.model.train()
         metrics = defaultdict(float)
+        seg_metrics = defaultdict(float)
         num_batches = len(self.train_loader)
 
         # Set epoch for distributed sampler if needed
@@ -176,7 +205,7 @@ class EfficientTrainer:
             start = time.time()
             img = img.to(self.device, non_blocking=True)
             mask = mask.to(self.device, non_blocking=True)
-            bbox =bbox.to(self.device, non_blocking=True)
+            bbox = bbox.to(self.device, non_blocking=True)
             label = label.to(self.device, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
@@ -185,24 +214,14 @@ class EfficientTrainer:
             context = autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext()
             with context:
                 det_out, seg_out = self.model(img)
-
-                # Compute losses
-                # bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
-                # dice_loss_val = dice_loss(seg_out, target)
-                
-                # Combined loss
-                # loss = self.bce_weight * bce_loss + self.dice_weight * dice_loss_val
                 loss, logs = multitask_loss(det_pred=det_out,
                                       seg_pred=seg_out,
                                       bbox=bbox,
                                       label=label,
                                       mask=mask)
                 
-                # Compute metrics (for monitoring)
-                # with torch.no_grad():
-                #     dice_score_val = dice_score(seg_out, target)
-                #     iou_val = iou_score(seg_out, target)
-                #     precision, recall, f1 = compute_precision_recall_f1(seg_out, target)
+                # Compute segmentation metrics for training
+                train_seg_metrics = compute_segmentation_metrics(seg_out, mask)
 
             # Backpropagation
             if self.use_amp:
@@ -217,105 +236,134 @@ class EfficientTrainer:
                 self.optimizer.step()
 
             self.scheduler.step()
-            print(loss.item())
+            
             # Accumulate metrics
-            metrics['loss'] += loss.item()
-            # metrics['bce'] += bce_loss.item()
-            # metrics['dice_loss'] += dice_loss_val.item()
-            # metrics['dice_score'] += dice_score_val.item()
-            # metrics['iou'] += iou_val.item()
-            # metrics['precision'] += precision.item()
-            # metrics['recall'] += recall.item()
-            # metrics['f1'] += f1.item()
+            metrics['loss'] += logs['total']
+            metrics['bbox_loss'] += logs['bbox']
+            metrics['obj_loss'] += logs['obj']
+            metrics['cls_loss'] += logs['cls']
+            metrics['seg_loss'] += logs['seg']
+            
+            # Accumulate segmentation metrics
+            for key, value in train_seg_metrics.items():
+                seg_metrics[key] += value
             
             batch_time = time.time() - start
             metrics['time'] += batch_time
             
             # Batch logging (reduced frequency to avoid spam)
-            if batch_idx % 1 == 0:
+            if batch_idx % 1 == 0:  # Reduced frequency from 1 to 10
                 print(
-                    f"Epoch {epoch}, Batch {batch_idx}/{num_batches}: "
-                    f"Loss: {loss.item():.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f}"
+                    f"\nEpoch {epoch}, Batch {batch_idx}/{num_batches}: \n"
+                    f"  Loss: {logs['total']:.4f} | bbox: {logs['bbox']:.4f} | "
+                    f"obj: {logs['obj']:.4f} | cls: {logs['cls']:.4f} | "
+                    f"seg: {logs['seg']:.4f} | dice: {train_seg_metrics['dice']:.4f} | "
+                    f"iou: {train_seg_metrics['iou']:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | Batch time: {batch_time:.2f} \n"
                 )
 
         # Average metrics over epoch
         for k in metrics:
             if k != 'time':
                 metrics[k] /= num_batches
+        
+        for k in seg_metrics:
+            seg_metrics[k] /= num_batches
 
         # Store in history
-        for key in self.train_history.keys():
-            self.train_history[key].append(metrics[key])
+        self.train_history['loss'].append(metrics['loss'])
+        self.train_history['bbox_loss'].append(metrics['bbox_loss'])
+        self.train_history['obj_loss'].append(metrics['obj_loss'])
+        self.train_history['cls_loss'].append(metrics['cls_loss'])
+        self.train_history['seg_loss'].append(metrics['seg_loss'])
+        self.train_history['dice'].append(seg_metrics['dice'])
+        self.train_history['iou'].append(seg_metrics['iou'])
+        self.train_history['precision'].append(seg_metrics['precision'])
+        self.train_history['recall'].append(seg_metrics['recall'])
+        self.train_history['f1'].append(seg_metrics['f1'])
 
         print(
             f"\nTraining Epoch {epoch} Summary:\n"
-            f"Loss: {metrics['loss']:.4f} "
+            f"Loss: {metrics['loss']:.4f} | Dice: {seg_metrics['dice']:.4f} | "
+            f"IoU: {seg_metrics['iou']:.4f} | F1: {seg_metrics['f1']:.4f}"
         )
 
-        return metrics
+        return {**metrics, **seg_metrics}
     
     @torch.no_grad()
     def validate(self, epoch):
         self.model.eval()
         metrics = defaultdict(float)
+        seg_metrics = defaultdict(float)
         num_batches = len(self.val_loader)
 
         for batch_idx, (img, mask, bbox, label) in enumerate(self.val_loader):
             start = time.time()
-            data = data.to(self.device, non_blocking=True)
-            target = target.to(self.device, non_blocking=True)
+            img = img.to(self.device, non_blocking=True)
+            mask = mask.to(self.device, non_blocking=True)
+            bbox = bbox.to(self.device, non_blocking=True)
+            label = label.to(self.device, non_blocking=True)
 
             with autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext():
-                seg_out = self.model(data)
-
-                # Compute losses and metrics
-                bce_loss = F.binary_cross_entropy_with_logits(seg_out, target)
-                dice_loss_val = dice_loss(seg_out, target)
-                loss = self.bce_weight * bce_loss + self.dice_weight * dice_loss_val
+                det_out, seg_out = self.model(img)
+                _, logs = multitask_loss(det_pred=det_out,
+                                      seg_pred=seg_out,
+                                      bbox=bbox,
+                                      label=label,
+                                      mask=mask)
                 
-                dice_score_val = dice_score(seg_out, target)
-                iou_val = iou_score(seg_out, target)
-                precision, recall, f1 = compute_precision_recall_f1(seg_out, target)
+                val_seg_metrics = compute_segmentation_metrics(seg_out, mask)
 
             # Accumulate metrics
-            metrics['loss'] += loss.item()
-            metrics['bce'] += bce_loss.item()
-            metrics['dice_loss'] += dice_loss_val.item()
-            metrics['dice_score'] += dice_score_val.item()
-            metrics['iou'] += iou_val.item()
-            metrics['precision'] += precision.item()
-            metrics['recall'] += recall.item()
-            metrics['f1'] += f1.item()
+            metrics['loss'] += logs['total']
+            metrics['bbox_loss'] += logs['bbox']
+            metrics['obj_loss'] += logs['obj']
+            metrics['cls_loss'] += logs['cls']
+            metrics['seg_loss'] += logs['seg']
+            
+            # Accumulate segmentation metrics
+            for key, value in val_seg_metrics.items():
+                seg_metrics[key] += value
             
             batch_time = time.time() - start
             metrics['time'] += batch_time
 
             # Reduced logging frequency
-            if batch_idx % 1 == 0:
+            if batch_idx % 1 == 0:  # Reduced frequency from 1 to 10
                 print(
-                    f"Val Epoch {epoch}, Batch {batch_idx}/{num_batches}: "
-                    f"Loss: {loss.item():.4f} | Dice: {dice_score_val.item():.4f} | "
-                    f"IoU: {iou_val.item():.4f}"
+                    f"\nEpoch {epoch}, Validation batch {batch_idx}/{num_batches}: \n"
+                    f"  Loss: {logs['total']:.4f} | bbox: {logs['bbox']:.4f} | "
+                    f"obj: {logs['obj']:.4f} | cls: {logs['cls']:.4f} | "
+                    f"seg: {logs['seg']:.4f} | dice: {val_seg_metrics['dice']:.4f} | "
+                    f"iou: {val_seg_metrics['iou']:.4f} | Batch time: {batch_time:.2f} \n"
                 )
 
         # Average metrics
         for k in metrics:
             if k != 'time':
                 metrics[k] /= num_batches
+        
+        for k in seg_metrics:
+            seg_metrics[k] /= num_batches
 
         # Store in history
-        for key in self.val_history.keys():
-            self.val_history[key].append(metrics[key])
+        self.val_history['loss'].append(metrics['loss'])
+        self.val_history['bbox_loss'].append(metrics['bbox_loss'])
+        self.val_history['obj_loss'].append(metrics['obj_loss'])
+        self.val_history['cls_loss'].append(metrics['cls_loss'])
+        self.val_history['seg_loss'].append(metrics['seg_loss'])
+        self.val_history['dice'].append(seg_metrics['dice'])
+        self.val_history['iou'].append(seg_metrics['iou'])
+        self.val_history['precision'].append(seg_metrics['precision'])
+        self.val_history['recall'].append(seg_metrics['recall'])
+        self.val_history['f1'].append(seg_metrics['f1'])
 
         print(
             f"\nValidation Epoch {epoch} Summary:\n"
-            f"Loss: {metrics['loss']:.4f} | BCE: {metrics['bce']:.4f} | "
-            f"Dice Loss: {metrics['dice_loss']:.4f} | Dice Score: {metrics['dice_score']:.4f} | "
-            f"IoU: {metrics['iou']:.4f} | Precision: {metrics['precision']:.4f} | "
-            f"Recall: {metrics['recall']:.4f} | F1: {metrics['f1']:.4f}"
+            f"Loss: {metrics['loss']:.4f} | Dice: {seg_metrics['dice']:.4f} | "
+            f"IoU: {seg_metrics['iou']:.4f} | F1: {seg_metrics['f1']:.4f}"
         )
 
-        return metrics
+        return {**metrics, **seg_metrics}
 
     def save_checkpoint(self, epoch, metrics, folderpath):
         """Enhanced checkpointing with complete metrics history"""
@@ -345,6 +393,7 @@ class EfficientTrainer:
             'train_history': self.train_history,
             'val_history': self.val_history,
             'epoch': epoch,
+            'current_metrics': metrics,
             'loss_weights': {
                 'bce_weight': self.bce_weight,
                 'dice_weight': self.dice_weight
@@ -357,27 +406,84 @@ class EfficientTrainer:
         print(f"Metrics saved to: {metrics_filename}")
 
     def plot_metrics(self, save_path=None):
-        """Plot comprehensive training metrics"""
+        """Plot comprehensive training metrics with better organization"""
         try:
             import matplotlib.pyplot as plt
             
-            fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-            fig.suptitle('Training Metrics', fontsize=16)
+            # Create subplots with better organization
+            fig, axes = plt.subplots(3, 4, figsize=(20, 15))
+            fig.suptitle('Training Metrics Dashboard', fontsize=16)
             
-            metrics_to_plot = ['loss', 'dice_score', 'iou', 'precision', 'recall', 'f1', 'bce', 'dice_loss']
+            # Define metrics to plot with their positions
+            metrics_layout = [
+                # Row 1: Loss metrics
+                ('loss', 0, 0, 'Total Loss'),
+                ('seg_loss', 0, 1, 'Segmentation Loss'),
+                ('bbox_loss', 0, 2, 'BBox Loss'),
+                ('obj_loss', 0, 3, 'Objectness Loss'),
+                # Row 2: Segmentation metrics
+                ('dice', 1, 0, 'Dice Score'),
+                ('iou', 1, 1, 'IoU Score'),
+                ('f1', 1, 2, 'F1 Score'),
+                ('cls_loss', 1, 3, 'Classification Loss'),
+                # Row 3: Precision/Recall and comparison
+                ('precision', 2, 0, 'Precision'),
+                ('recall', 2, 1, 'Recall'),
+                ('', 2, 2, ''),  # Empty for custom plot
+                ('', 2, 3, '')   # Empty for custom plot
+            ]
             
-            for i, metric in enumerate(metrics_to_plot):
-                row = i // 4
-                col = i % 4
-                
-                if metric in self.train_history and len(self.train_history[metric]) > 0:
+            for metric, row, col, title in metrics_layout:
+                if metric and metric in self.train_history and len(self.train_history[metric]) > 0:
                     epochs = range(1, len(self.train_history[metric]) + 1)
-                    axes[row, col].plot(epochs, self.train_history[metric], 'b-', label='Train', linewidth=2)
-                    axes[row, col].plot(epochs, self.val_history[metric], 'r-', label='Val', linewidth=2)
-                    axes[row, col].set_title(f'{metric.replace("_", " ").title()}')
+                    axes[row, col].plot(epochs, self.train_history[metric], 'b-', label='Train', linewidth=2, alpha=0.8)
+                    axes[row, col].plot(epochs, self.val_history[metric], 'r-', label='Val', linewidth=2, alpha=0.8)
+                    axes[row, col].set_title(title, fontsize=12, fontweight='bold')
                     axes[row, col].set_xlabel('Epoch')
                     axes[row, col].legend()
                     axes[row, col].grid(True, alpha=0.3)
+                    
+                    # Add value annotations for the last epoch
+                    if len(epochs) > 0:
+                        last_train = self.train_history[metric][-1]
+                        last_val = self.val_history[metric][-1]
+                        axes[row, col].annotate(f'{last_train:.3f}', 
+                                              xy=(epochs[-1], last_train), 
+                                              xytext=(5, 5), textcoords='offset points',
+                                              fontsize=8, color='blue')
+                        axes[row, col].annotate(f'{last_val:.3f}', 
+                                              xy=(epochs[-1], last_val), 
+                                              xytext=(5, -15), textcoords='offset points',
+                                              fontsize=8, color='red')
+            
+            # Custom plot 1: Dice vs IoU comparison
+            if len(self.val_history['dice']) > 0 and len(self.val_history['iou']) > 0:
+                epochs = range(1, len(self.val_history['dice']) + 1)
+                axes[2, 2].plot(epochs, self.val_history['dice'], 'g-', label='Dice', linewidth=2)
+                axes[2, 2].plot(epochs, self.val_history['iou'], 'orange', label='IoU', linewidth=2)
+                axes[2, 2].set_title('Dice vs IoU (Validation)', fontsize=12, fontweight='bold')
+                axes[2, 2].set_xlabel('Epoch')
+                axes[2, 2].legend()
+                axes[2, 2].grid(True, alpha=0.3)
+            
+            # Custom plot 2: Learning rate over time
+            if hasattr(self, 'scheduler'):
+                # Note: This is approximate since we don't store LR history
+                epochs = range(1, len(self.train_history['loss']) + 1)
+                axes[2, 3].set_title('Training Progress Summary', fontsize=12, fontweight='bold')
+                axes[2, 3].text(0.1, 0.8, f"Best Dice: {max(self.val_history['dice']) if self.val_history['dice'] else 0:.4f}", 
+                               transform=axes[2, 3].transAxes, fontsize=10)
+                axes[2, 3].text(0.1, 0.7, f"Best IoU: {max(self.val_history['iou']) if self.val_history['iou'] else 0:.4f}", 
+                               transform=axes[2, 3].transAxes, fontsize=10)
+                axes[2, 3].text(0.1, 0.6, f"Best F1: {max(self.val_history['f1']) if self.val_history['f1'] else 0:.4f}", 
+                               transform=axes[2, 3].transAxes, fontsize=10)
+                axes[2, 3].text(0.1, 0.5, f"Lowest Loss: {min(self.val_history['loss']) if self.val_history['loss'] else 0:.4f}", 
+                               transform=axes[2, 3].transAxes, fontsize=10)
+                axes[2, 3].text(0.1, 0.4, f"Epochs: {len(epochs)}", 
+                               transform=axes[2, 3].transAxes, fontsize=10)
+                axes[2, 3].set_xlim(0, 1)
+                axes[2, 3].set_ylim(0, 1)
+                axes[2, 3].axis('off')
             
             plt.tight_layout()
             
@@ -414,38 +520,22 @@ class EfficientTrainer:
         print(f"Checkpoint loaded from epoch {checkpoint['epoch']}")
         return checkpoint['epoch']
 
-# Example training loop
-def train_model(trainer, num_epochs, checkpoint_dir, save_every=5, plot_every=10):
-    """Complete training loop with checkpointing and plotting"""
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    
-    best_dice = 0.0
-    
-    for epoch in range(1, num_epochs + 1):
-        print(f"\n{'='*50}")
-        print(f"EPOCH {epoch}/{num_epochs}")
-        print(f"{'='*50}")
+    def get_best_metrics(self):
+        """Get best achieved metrics across all epochs"""
+        best_metrics = {}
         
-        # Train
-        train_metrics = trainer.train_epoch(epoch)
+        for metric_name in ['dice', 'iou', 'f1', 'precision', 'recall']:
+            if metric_name in self.val_history and self.val_history[metric_name]:
+                best_metrics[f'best_{metric_name}'] = max(self.val_history[metric_name])
+                best_metrics[f'best_{metric_name}_epoch'] = self.val_history[metric_name].index(best_metrics[f'best_{metric_name}']) + 1
         
-        # Validate
-        val_metrics = trainer.validate(epoch)
+        if 'loss' in self.val_history and self.val_history['loss']:
+            best_metrics['best_loss'] = min(self.val_history['loss'])
+            best_metrics['best_loss_epoch'] = self.val_history['loss'].index(best_metrics['best_loss']) + 1
         
-        # Save checkpoint for best model
-        if val_metrics['dice_score'] > best_dice:
-            best_dice = val_metrics['dice_score']
-            trainer.save_checkpoint(epoch, val_metrics, checkpoint_dir)
-            print(f"New best Dice score: {best_dice:.4f}")
-        
-        # Regular checkpointing
-        if epoch % save_every == 0:
-            trainer.save_checkpoint(epoch, val_metrics, checkpoint_dir)
-        
-        # Plot metrics
-        if epoch % plot_every == 0:
-            plot_path = os.path.join(checkpoint_dir, f'metrics_epoch_{epoch}.png')
-            trainer.plot_metrics(save_path=plot_path)
+        return best_metrics
+
+
 
 # Example usage:
 if __name__ == '__main__':
