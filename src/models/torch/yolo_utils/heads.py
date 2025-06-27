@@ -14,7 +14,7 @@ class DetectionHead(nn.Module):
         return self.head(x)  # [B, 6, 16, 16]
 
 class SegmentationHead(nn.Module):
-    def __init__(self, in_ch, out_size=128):
+    def __init__(self, in_ch, out_size=256):
         super().__init__()
         self.seg = nn.Sequential(
             nn.Conv2d(in_ch, 64, kernel_size=3, padding=1),
