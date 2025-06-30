@@ -59,13 +59,18 @@ config = {
         'bce_weight': 0.4,    
         'dice_weight': 0.6,   
         'val_ratio': 0.2,
-        'batch_size':256
+        'batch_size':64
     }
 
 def main(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # model = UNet(in_ch=12).to(device=device)
-    model = YOLOMultiTask(in_ch=12,input_size=256).to(device=device)
+    model = YOLOMultiTask(in_channels=12,input_size=256,
+                          backbone_config={
+                                            'depth_mult': 1.0,
+                                            'width_mult': 1.0,
+                                            'use_coords': False
+                                        }).to(device=device)
     train, val = get_dataloaders(config)
     trainer = EfficientTrainer(model=model,
                                train_loader=train,

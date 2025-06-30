@@ -1,6 +1,8 @@
 import torch.nn.functional as F
 # from models.torch.yolo_utils.heads import assign_targets
+# from models.torch.yolo_utils.data import PTMultiTaskDataset
 from models.torch.yolo_utils.data import PTMultiTaskDataset
+
 import torch
 def mask_to_bbox(mask):
     y_indices, x_indices = torch.where(mask > 0)
@@ -36,7 +38,7 @@ def assign_targets(bbox, label, feat_size=16, img_size=256):
 
 def multitask_loss(det_pred, seg_pred, bbox, label, mask, 
                    lambda_bbox=1, lambda_seg=5, lambda_obj=1, lambda_cls=1):
-
+    # print(det_pred)
     B, _, Hf, Wf = det_pred.shape
     target_map = assign_targets(bbox, label, feat_size=Hf, img_size=256)
 
@@ -69,7 +71,7 @@ def multitask_loss(det_pred, seg_pred, bbox, label, mask,
 if __name__ == '__main__':
     # Dummy inputs
     model = YOLOMultiTask()
-    data = RandomMultiTaskDataset()
+    data = PTMultiTaskDataset()
     img, mask, bbox, label = data[0]
 
     img = img.unsqueeze(0)

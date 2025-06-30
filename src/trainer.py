@@ -8,7 +8,7 @@ from datetime import datetime
 import os
 import json
 from collections import defaultdict
-from models.torch.yolo_utils.loss import multitask_loss
+from models.torch.YOLOv8 import multitask_loss
 
 @torch.jit.script
 def iou_score(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5, eps: float = 1e-6) -> torch.Tensor:
@@ -214,8 +214,8 @@ class EfficientTrainer:
             context = autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext()
             with context:
                 det_out, seg_out = self.model(img)
-                loss, logs = multitask_loss(det_pred=det_out,
-                                      seg_pred=seg_out,
+                loss, logs = multitask_loss(detection_pred=det_out,
+                                      segmentation_pred=seg_out,
                                       bbox=bbox,
                                       label=label,
                                       mask=mask)
@@ -240,9 +240,10 @@ class EfficientTrainer:
             # Accumulate metrics
             metrics['loss'] += logs['total']
             metrics['bbox_loss'] += logs['bbox']
-            metrics['obj_loss'] += logs['obj']
-            metrics['cls_loss'] += logs['cls']
-            metrics['seg_loss'] += logs['seg']
+            metrics['obj_loss'] += logs['objectness']
+            metrics['cls_loss'] += logs['classification']
+            metrics['seg_loss'] += logs['segmentation']
+    
             
             # Accumulate segmentation metrics
             for key, value in train_seg_metrics.items():
@@ -256,8 +257,8 @@ class EfficientTrainer:
                 print(
                     f"\nEpoch {epoch}, Batch {batch_idx}/{num_batches}: \n"
                     f"  Loss: {logs['total']:.4f} | bbox: {logs['bbox']:.4f} | "
-                    f"obj: {logs['obj']:.4f} | cls: {logs['cls']:.4f} | "
-                    f"seg: {logs['seg']:.4f} | dice: {train_seg_metrics['dice']:.4f} | "
+                    f"obj: {logs['objectness']:.4f} | cls: {logs['classification']:.4f} | "
+                    f"seg: {logs['segmentation']:.4f} | dice: {train_seg_metrics['dice']:.4f} | "
                     f"iou: {train_seg_metrics['iou']:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | Batch time: {batch_time:.2f} \n"
                 )
 
@@ -316,9 +317,9 @@ class EfficientTrainer:
             # Accumulate metrics
             metrics['loss'] += logs['total']
             metrics['bbox_loss'] += logs['bbox']
-            metrics['obj_loss'] += logs['obj']
-            metrics['cls_loss'] += logs['cls']
-            metrics['seg_loss'] += logs['seg']
+            metrics['obj_loss'] += logs['objectness']
+            metrics['cls_loss'] += logs['classification']
+            metrics['seg_loss'] += logs['segmentation']
             
             # Accumulate segmentation metrics
             for key, value in val_seg_metrics.items():
@@ -332,8 +333,8 @@ class EfficientTrainer:
                 print(
                     f"\nEpoch {epoch}, Validation batch {batch_idx}/{num_batches}: \n"
                     f"  Loss: {logs['total']:.4f} | bbox: {logs['bbox']:.4f} | "
-                    f"obj: {logs['obj']:.4f} | cls: {logs['cls']:.4f} | "
-                    f"seg: {logs['seg']:.4f} | dice: {val_seg_metrics['dice']:.4f} | "
+                    f"obj: {logs['objectness']:.4f} | cls: {logs['classification']:.4f} | "
+                    f"seg: {logs['segmentation']:.4f} | dice: {val_seg_metrics['dice']:.4f} | "
                     f"iou: {val_seg_metrics['iou']:.4f} | Batch time: {batch_time:.2f} \n"
                 )
 
