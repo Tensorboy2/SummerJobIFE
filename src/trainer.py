@@ -306,8 +306,8 @@ class EfficientTrainer:
 
             with autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext():
                 det_out, seg_out = self.model(img)
-                _, logs = multitask_loss(det_pred=det_out,
-                                      seg_pred=seg_out,
+                _, logs = multitask_loss(detection_pred=det_out,
+                                      segmentation_pred=seg_out,
                                       bbox=bbox,
                                       label=label,
                                       mask=mask)
