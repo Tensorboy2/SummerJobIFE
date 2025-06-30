@@ -1,65 +1,82 @@
-from models.torch.yolo_utils.backbone import ConvBNAct
-import torch.nn as nn
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from models.torch.yolo_utils.backbone import ConvBNAct
+# from backbone import ConvBNAct
 
+# 🔍 Multi-scale Detection Head
 class DetectionHead(nn.Module):
-    def __init__(self, in_ch, num_outputs=6):
+    def __init__(self, channels=[32, 64, 128], num_outputs=6):
         super().__init__()
-        self.head = nn.Sequential(
-            ConvBNAct(in_ch, in_ch, k=3, s=1),
-            nn.Conv2d(in_ch, num_outputs, kernel_size=1)
-        )
+        self.heads = nn.ModuleList([
+            nn.Sequential(
+                ConvBNAct(c, c, k=3, s=1),
+                nn.Conv2d(c, num_outputs, kernel_size=1)
+            ) for c in channels
+        ])
 
-    def forward(self, x):
-        return self.head(x)  # [B, 6, 16, 16]
+    def forward(self, feats):
+        # feats: list of [P3, P4, P5]
+        return [head(f) for head, f in zip(self.heads, feats)]
+        # Returns list: [[B, 6, 64, 64], [B, 6, 32, 32], [B, 6, 16, 16]]
 
+
+
+# 🧼 Advanced Segmentation Decoder Head (U-Net-style with skip fusion)
 class SegmentationHead(nn.Module):
-    def __init__(self, in_ch, out_size=256):
+    def __init__(self, channels=[32, 64, 128], out_size=128):
         super().__init__()
-        self.seg = nn.Sequential(
-            nn.Conv2d(in_ch, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),  # 32x32
-            nn.Conv2d(64, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),  # 64x64
-            nn.Conv2d(32, 1, kernel_size=3, padding=1),
-            nn.Sigmoid(),  # output mask in [0, 1]
-            nn.Upsample(size=(out_size, out_size), mode='bilinear', align_corners=False)  # final resize
+        c3, c4, c5 = channels
+
+        self.up1 = nn.Sequential(
+            nn.Conv2d(c5, c4, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        )
+        self.fuse1 = nn.Sequential(
+            nn.Conv2d(c4 + c4, c4, 3, padding=1),
+            nn.ReLU(inplace=True)
         )
 
-    def forward(self, x):
-        return self.seg(x)  # [B, 1, 128, 128]
+        self.up2 = nn.Sequential(
+            nn.Conv2d(c4, c3, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        )
+        self.fuse2 = nn.Sequential(
+            nn.Conv2d(c3 + c3, c3, 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
 
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(c3, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 1, 1),
+            nn.Sigmoid(),
+            nn.Upsample(size=(out_size, out_size), mode='bilinear', align_corners=False)
+        )
 
+    def forward(self, feats):
+        # feats: [P3, P4, P5]
+        p3, p4, p5 = feats
 
+        x = self.up1(p5)
+        x = self.fuse1(torch.cat([x, p4], dim=1))  # 32x32
 
+        x = self.up2(x)
+        x = self.fuse2(torch.cat([x, p3], dim=1))  # 64x64
 
-def assign_targets(bbox, label, feat_size=16, img_size=128):
-    # bbox: [B, 4] in normalized coords
-    B = bbox.size(0)
-    target_map = torch.zeros(B, 6, feat_size, feat_size, device=bbox.device)
+        return self.final_conv(x)  # [B, 1, 128, 128]
 
-    for b in range(B):
-        x, y, w, h = bbox[b]
-        cx = int(x * feat_size)
-        cy = int(y * feat_size)
+if __name__ == '__main__':
+    B = 2
+    feats = [torch.randn(B, 32, 64, 64), torch.randn(B, 64, 32, 32), torch.randn(B, 128, 16, 16)]
 
-        target_map[b, 0, cy, cx] = x
-        target_map[b, 1, cy, cx] = y
-        target_map[b, 2, cy, cx] = w
-        target_map[b, 3, cy, cx] = h
-        target_map[b, 4, cy, cx] = 1.0  # objectness
-        target_map[b, 5, cy, cx] = label[b]  # class (0 or 1)
+    det_head = DetectionHead()
+    det_outs = det_head(feats)
+    for i, o in enumerate(det_outs):
+        print(f"Det scale {i}: {o.shape}")
 
-    return target_map  # [B, 6, 16, 16]
-
-
-
-# if __name__ == '__main__':
-#     # model = YOLOMultiTask(in_ch=12,input_size=256)
-#     x = torch.randn(2, 12, 256, 256)
-#     # det_out, seg_out = model(x)
-
-#     print("Detection output:", det_out.shape)  # [2, 6, 16, 16]
-#     print("Segmentation output:", seg_out.shape)  # [2, 1, 128, 128]
+    seg_head = SegmentationHead()
+    seg_out = seg_head(feats)
+    print("Segmentation output:", seg_out.shape)

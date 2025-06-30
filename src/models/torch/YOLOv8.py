@@ -1,15 +1,15 @@
 from models.torch.yolo_utils.backbone import SimpleYOLOBackbone
-from models.torch.yolo_utils.neck import SimpleNeck
+from models.torch.yolo_utils.neck import AdvancedNeck
 from models.torch.yolo_utils.heads import DetectionHead, SegmentationHead
 import torch.nn as nn
 class YOLOMultiTask(nn.Module):
-    def __init__(self, in_ch=3, input_size=128):
+    def __init__(self, in_ch=3, input_size=256):
         super().__init__()
         self.backbone = SimpleYOLOBackbone(in_ch=in_ch)
-        self.neck = SimpleNeck(128, 128)
+        self.neck = AdvancedNeck()
 
-        self.det_head = DetectionHead(128, 6)    # bbox + object + class
-        self.seg_head = SegmentationHead(128, input_size)
+        self.det_head = DetectionHead()    # bbox + object + class
+        self.seg_head = SegmentationHead(out_size=256)
 
     def forward(self, x):
         features = self.neck(self.backbone(x))  # [B, 128, 16, 16]
