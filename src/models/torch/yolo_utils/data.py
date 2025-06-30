@@ -17,7 +17,7 @@ class PTMultiTaskDataset(Dataset):
         sample = torch.load(os.path.join(self.folder, self.files[idx]))
 
         # Extract image and mask
-        img = sample["image"].permute(2, 0, 1)  # [H, W, C] → [C, H, W]
+        img = sample["image"].permute(2, 0, 1)/15  # [H, W, C] → [C, H, W]
         mask = sample["mask"]                  # [1, H, W]
 
         # Compute bounding box from mask
@@ -39,6 +39,7 @@ class PTMultiTaskDataset(Dataset):
 
         if self.transform:
             img = self.transform(img)
+        
 
         return img, mask, bbox, label
 
@@ -96,7 +97,7 @@ if __name__ == '__main__':
 
             # Select Sentinel-2 RGB (bands 4, 3, 2) - assuming original 12-band image
             if img.shape[0] >= 4:
-                rgb = img[[3, 2, 1]]/10  # band indices for RGB (S2: B4, B3, B2)
+                rgb = img[[3, 2, 1]]#/20  # band indices for RGB (S2: B4, B3, B2)
             else:
                 rgb = img[[0, 1, 2]]  # fallback for non-S2 or RGB-only
 
