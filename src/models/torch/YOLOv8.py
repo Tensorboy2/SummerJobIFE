@@ -400,7 +400,7 @@ def assign_targets(bbox: torch.Tensor, label: torch.Tensor,
 
 def multitask_loss(detection_pred: List[torch.Tensor], segmentation_pred: torch.Tensor,
                   bbox: torch.Tensor, label: torch.Tensor, mask: torch.Tensor,
-                  lambda_bbox: float = 1.0, lambda_seg: float = 5.0,
+                  lambda_bbox: float = 5.0, lambda_seg: float = 1.0,
                   lambda_obj: float = 1.0, lambda_cls: float = 1.0,
                   scale_weights: List[float] = [1.0, 1.0, 1.0]) -> Tuple[torch.Tensor, Dict[str, float]]:
     """
