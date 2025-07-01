@@ -52,12 +52,10 @@ class MAETrainer:
         return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
     def _step(self, img, training=True):
-        # img = map(
-        #     lambda x: x.to(self.device, non_blocking=True),
-        #     (img)
-        # )
+        img = img.to(self.device, non_blocking=True),
+        
 
-        context = autocast(device_type=self.device, dtype=torch.float16) if self.use_amp else nullcontext()
+        context = autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp) if self.use_amp else nullcontext()
         with context:
             loss, _, _ = self.model(img)
 

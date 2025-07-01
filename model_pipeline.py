@@ -15,7 +15,7 @@ def pretrain():
     print(f'Started pre-training...')
     config = {
         'val_ratio':0.2,
-        'batch_size':256,
+        'batch_size':2,
         'data_type':'mae',
         'lr':1e-4,
         'weight_decay':0.5,
