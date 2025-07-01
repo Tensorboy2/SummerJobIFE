@@ -35,7 +35,7 @@ def mae():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     train_data_loader, val_data_loaders = get_dataloaders(config)
-    model = ConvNeXtV2MAE(in_chans=12)
+    model = ConvNeXtV2MAE(in_chans=12).to(device=device)
     trainer = MAETrainer(model=model,
                          train_loader=train_data_loader, 
                          val_loader=val_data_loaders,
