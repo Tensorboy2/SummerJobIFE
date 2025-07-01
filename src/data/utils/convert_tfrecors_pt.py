@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 # === Config ===
 S2_BANDS = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12']
-IMAGE_SIZE = 256*2
+IMAGE_SIZE = 256
 NUM_BANDS = len(S2_BANDS)
 
 YEARS = ['2021', '2022', '2023']
