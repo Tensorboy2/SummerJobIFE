@@ -57,7 +57,7 @@ class MAETrainer:
         #     (img)
         # )
 
-        context = autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext()
+        context = autocast(device_type=self.device, dtype=torch.float16) if self.use_amp else nullcontext()
         with context:
             loss, _, _ = self.model(img)
 
