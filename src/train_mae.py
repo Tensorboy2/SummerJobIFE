@@ -83,7 +83,7 @@ class MAETrainer:
         self.model.train()
         metrics = defaultdict(float)
         for batch_idx, img in enumerate(self.train_loader):
-            img.to(device=self.device)
+            # img.to(device=self.device)
             start = time.time()
             loss = self._step(img, training=True)
             metrics['loss'] += loss
@@ -105,7 +105,7 @@ class MAETrainer:
         self.model.eval()
         metrics = defaultdict(float)
         for batch_idx, img in enumerate(self.val_loader):
-            img.to(device=self.device)
+            # img.to(device=self.device)
             start = time.time()
             loss = self._step(img, training=False)
             metrics['loss'] += loss
