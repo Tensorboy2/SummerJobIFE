@@ -26,7 +26,7 @@ def pretrain():
         'compile': True,
         'max_grad_norm': 1.0,
     }
-    model = ConvNeXtV2MAE()
+    model = ConvNeXtV2MAE().to(device=device)
     train_loader, val_loader = get_dataloaders(config=config)
     trainer = MAETrainer(model=model,
                train_loader=train_loader,
