@@ -51,15 +51,15 @@ class MAETrainer:
 
         return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
-    def _step(self, img, mask, bbox, label, training=True):
-        img, mask, bbox, label = map(
-            lambda x: x.to(self.device, non_blocking=True),
-            (img, mask, bbox, label)
-        )
+    def _step(self, img, training=True):
+        # img = map(
+        #     lambda x: x.to(self.device, non_blocking=True),
+        #     (img)
+        # )
 
         context = autocast(device_type=self.device, dtype=torch.bfloat16) if self.use_amp else nullcontext()
         with context:
-            loss, pred, out_mask = self.model(img)
+            loss, _, _ = self.model(img)
 
         if training:
             self.optimizer.zero_grad(set_to_none=True)
@@ -82,9 +82,9 @@ class MAETrainer:
     def train_epoch(self, epoch):
         self.model.train()
         metrics = defaultdict(float)
-        for batch_idx, (img, mask, bbox, label) in enumerate(self.train_loader):
+        for batch_idx, img in enumerate(self.train_loader):
             start = time.time()
-            loss = self._step(img, mask, bbox, label, training=True)
+            loss = self._step(img, training=True)
             metrics['loss'] += loss
             metrics['time'] += time.time() - start
 
@@ -103,9 +103,9 @@ class MAETrainer:
     def validate(self, epoch):
         self.model.eval()
         metrics = defaultdict(float)
-        for batch_idx, (img, mask, bbox, label) in enumerate(self.val_loader):
+        for batch_idx, img in enumerate(self.val_loader):
             start = time.time()
-            loss = self._step(img, mask, bbox, label, training=False)
+            loss = self._step(img, training=False)
             metrics['loss'] += loss
             metrics['time'] += time.time() - start
 
@@ -118,3 +118,18 @@ class MAETrainer:
 
         print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}")
         return metrics
+
+    def save_checkpoint(self):
+        checkpoint = {
+            'model_state_dict':self.model.state_dict()
+        }
+        torch.save(checkpoint)
+
+    def train(self):
+        best_loss = torch.inf
+        for epoch in (1,self.config["num_epochs"]):
+            _ = self.train_epoch(epoch)
+            validation_metrics = self.validate(epoch)
+            if validation_metrics["loss"]<best_loss:
+                self.save_checkpoint()
+                print(f"new best model, loss: {validation_metrics['loss']}")

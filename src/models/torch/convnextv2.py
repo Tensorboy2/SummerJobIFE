@@ -164,6 +164,130 @@ class ConvNeXtV2Decoder(nn.Module):
         
         return x
 
+class ConvNeXtV2SegmentationDecoder(nn.Module):
+    '''
+    ConvNeXt V2 Segmentation Decoder with skip connections (U-Net style).
+    '''
+    def __init__(self, encoder_dims=[96,192,384,768], decoder_dims=[384,192,96,48], num_classes=21):
+        super().__init__()
+        self.encoder_dims = encoder_dims
+        self.decoder_dims = decoder_dims
+        self.num_classes = num_classes
+        
+        # Skip connection projections to match decoder dimensions AFTER upsampling
+        self.skip_projections = nn.ModuleList()
+        for i in range(len(encoder_dims) - 1):  # Skip the deepest feature
+            # Project to the target decoder dimension (after upsampling)
+            target_dim = decoder_dims[i + 1]  # The dimension after upsampling
+            encoder_skip_dim = encoder_dims[-(i+2)]  # Corresponding encoder dimension
+            self.skip_projections.append(
+                nn.Conv2d(encoder_skip_dim, target_dim, kernel_size=1)
+            )
+        
+        # Initial projection from encoder to decoder
+        self.encoder_to_decoder = nn.Conv2d(encoder_dims[-1], decoder_dims[0], kernel_size=1)
+        
+        # Decoder blocks with upsampling
+        self.decoder_blocks = nn.ModuleList()
+        for i in range(len(decoder_dims) - 1):
+            # Upsampling layer
+            upsample = nn.ConvTranspose2d(
+                decoder_dims[i], decoder_dims[i+1], 
+                kernel_size=2, stride=2
+            )
+            
+            # Fusion layer (combines upsampled features with skip connection)
+            # Both upsampled and skip features will have decoder_dims[i+1] channels
+            fusion_dim = decoder_dims[i+1] * 2  # Skip + upsampled features
+            fusion = nn.Sequential(
+                nn.Conv2d(fusion_dim, decoder_dims[i+1], kernel_size=3, padding=1),
+                LayerNorm2d(decoder_dims[i+1]),
+                nn.GELU()
+            )
+            
+            # ConvNeXt blocks for feature refinement
+            blocks = nn.Sequential(
+                *[ConvNeXtBlock(dim=decoder_dims[i+1]) for _ in range(2)]
+            )
+            
+            self.decoder_blocks.append(nn.ModuleDict({
+                'upsample': upsample,
+                'fusion': fusion,
+                'blocks': blocks
+            }))
+        
+        # Final upsampling to match input resolution (4x upsampling for stem)
+        self.final_upsample = nn.Sequential(
+            nn.ConvTranspose2d(decoder_dims[-1], decoder_dims[-1], kernel_size=4, stride=4),
+            LayerNorm2d(decoder_dims[-1]),
+            nn.GELU(),
+            *[ConvNeXtBlock(dim=decoder_dims[-1]) for _ in range(2)]
+        )
+        
+        # Classification head
+        self.classifier = nn.Sequential(
+            nn.Conv2d(decoder_dims[-1], decoder_dims[-1], kernel_size=3, padding=1),
+            LayerNorm2d(decoder_dims[-1]),
+            nn.GELU(),
+            nn.Dropout2d(0.1),
+            nn.Conv2d(decoder_dims[-1], num_classes, kernel_size=1)
+        )
+        
+    def forward(self, encoder_features):
+        """
+        encoder_features: List of features from encoder stages
+        """
+        # Debug: print encoder features shapes
+        # print("Encoder features shapes:", [f.shape for f in encoder_features])
+        # print("Decoder dims:", self.decoder_dims)
+        
+        # Start with the deepest features
+        x = self.encoder_to_decoder(encoder_features[-1])
+        # print(f"After encoder_to_decoder: {x.shape}")
+        
+        # Progressive upsampling with skip connections
+        for i, decoder_block in enumerate(self.decoder_blocks):
+            # print(f"\nDecoder block {i}:")
+            # print(f"  Input x shape: {x.shape}")
+            
+            # Upsample current features
+            x = decoder_block['upsample'](x)
+            # print(f"  After upsample: {x.shape}")
+            
+            # Get corresponding skip connection (reverse order)
+            skip_idx = len(encoder_features) - 2 - i
+            skip_features = encoder_features[skip_idx]
+            # print(f"  Skip features (idx {skip_idx}) original shape: {skip_features.shape}")
+            
+            # Project skip features to match the upsampled feature dimension
+            skip_features = self.skip_projections[i](skip_features)
+            # print(f"  Skip features after projection: {skip_features.shape}")
+            
+            # Ensure spatial dimensions match before concatenation
+            if x.shape[2:] != skip_features.shape[2:]:
+                skip_features = F.interpolate(skip_features, size=x.shape[2:], mode='bilinear', align_corners=False)
+                # print(f"  Skip features after interpolation: {skip_features.shape}")
+            
+            # Concatenate upsampled features with skip connection
+            x = torch.cat([x, skip_features], dim=1)
+            # print(f"  After concatenation: {x.shape}")
+            
+            # Fuse and refine features
+            x = decoder_block['fusion'](x)
+            # print(f"  After fusion: {x.shape}")
+            x = decoder_block['blocks'](x)
+            # print(f"  After blocks: {x.shape}")
+        
+        # Final upsampling to input resolution
+        x = self.final_upsample(x)
+        # print(f"After final upsample: {x.shape}")
+        
+        # Classification
+        x = self.classifier(x)
+        # print(f"Final output: {x.shape}")
+        
+        return x
+
 class ConvNeXtV2MAE(nn.Module):
     '''
     ConvNeXt V2 with Encoder-Decoder structure for MAE training.
@@ -278,6 +402,27 @@ class ConvNeXtV2MAE(nn.Module):
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 
+class ConvNeXtV2Segmentation(nn.Module):
+    '''
+    ConvNeXt V2 for semantic segmentation with U-Net style architecture.
+    '''
+    def __init__(self, in_chans=3, num_classes=21, depths=[3,3,9,3], dims=[96,192,384,768], 
+                 decoder_dims=[384,192,96,48]):
+        super().__init__()
+        self.num_classes = num_classes
+        
+        self.encoder = ConvNeXtV2Encoder(in_chans, depths, dims)
+        self.decoder = ConvNeXtV2SegmentationDecoder(dims, decoder_dims, num_classes)
+        
+    def forward(self, x):
+        # Encode
+        _, encoder_features = self.encoder(x)
+        
+        # Decode with skip connections
+        segmentation_logits = self.decoder(encoder_features)
+        
+        return segmentation_logits
+
 # For backwards compatibility
 class ConvNeXtV2(ConvNeXtV2Encoder):
     '''
@@ -294,12 +439,25 @@ if __name__ == '__main__':
     # Test encoder-decoder
     model = ConvNeXtV2MAE(in_chans=12)
     loss, pred, mask = model(x)
-    print(f"Input shape: {x.shape}")
-    print(f"Prediction shape: {pred.shape}")
-    print(f"Mask shape: {mask.shape}")
-    print(f"Loss: {loss.item()}")
+    print(f"MAE Input shape: {x.shape}")
+    print(f"MAE Prediction shape: {pred.shape}")
+    print(f"MAE Mask shape: {mask.shape}")
+    print(f"MAE Loss: {loss.item()}")
+    
+    # Test segmentation model
+    x_seg = torch.rand((2, 3, 256, 256))
+    seg_model = ConvNeXtV2Segmentation(in_chans=3, num_classes=1)
+    seg_output = seg_model(x_seg)
+    print(f"\nSegmentation Input shape: {x_seg.shape}")
+    print(f"Segmentation Output shape: {seg_output.shape}")
     
     # Test original model (backwards compatibility)
     original_model = ConvNeXtV2(in_chans=12)
     y = original_model(x)
-    print(f"Original model output shape: {y.shape}")
+    print(f"\nOriginal model output shape: {y.shape}")
+    
+    # Test with different input sizes
+    x_test = torch.rand((1, 3, 512, 512))
+    seg_output_large = seg_model(x_test)
+    print(f"\nLarge input shape: {x_test.shape}")
+    print(f"Large segmentation output shape: {seg_output_large.shape}")
