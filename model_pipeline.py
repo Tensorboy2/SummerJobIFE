@@ -51,7 +51,7 @@ def segmentation_train():
     print(f'Started segmentation-training...')
     config = {
         'val_ratio':0.2,
-        'batch_size':128,
+        'batch_size':32,
         'data_type':'segmentation',
         'lr':0.0001,
         'weight_decay':0.1,
