@@ -133,7 +133,7 @@ class GlobalWaterMaskingPipeline:
         else:
             raise ValueError("Invalid composite method")
 
-    def export_to_asset(self, image, asset_id, description, region, scale=10, max_pixels=1e9, crs='EPSG:4326'):
+    def export_to_asset(self, image, asset_id, description, region, scale=10, max_pixels=1e9, crs='EPSG:4326',overwrite=True):
         """Reduced max_pixels to prevent timeouts."""
         # CORRECTED CALL: Pass arguments as keyword arguments directly
         task = ee.batch.Export.image.toAsset(
@@ -143,7 +143,8 @@ class GlobalWaterMaskingPipeline:
             region=region,
             scale=scale,
             maxPixels=max_pixels,
-            crs=crs # Use EPSG:4326 as default for broader compatibility
+            crs=crs, # Use EPSG:4326 as default for broader compatibility
+            # overwrite=overwrite,
         )
         task.start()
         print(f"Started export: {description}")
@@ -468,7 +469,7 @@ if __name__ == '__main__':
     
     # Define regions to process. For Europe, you could use a more precise geometry.
     regions = {
-        'europe_test_area': [5.0, 58.0, 10.0, 62.0], # A smaller test area in Norway/Sweden
+        'netherland_test_area_2': [6.00, 52.47, 6.18, 52.55], # A smaller test area in Norway/Sweden
         # 'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
     }
     
@@ -496,17 +497,18 @@ if __name__ == '__main__':
             scale=10,    # Output resolution in meters
             batch_size=25, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
             water_threshold=0.001,
-            years_for_consistency=years_for_consistency_analysis # Pass the years list
+            years_for_consistency=years_for_consistency_analysis, # Pass the years list
+            assetId=region_name
         )
         
         if tasks:
             # Monitor this region's tasks (should be just one export task for the combined asset)
-            final_states = pipeline.monitor_tasks(tasks, interval=300, max_wait_hours=24) # Increased max_wait_hours
+            final_states = pipeline.monitor_tasks(tasks, interval=30, max_wait_hours=1) # Increased max_wait_hours
             print(f"Region {region_name} completed with states: {final_states}")
             
             # Print asset ID for easy access in GEE Code Editor
             if final_states.get('COMPLETED', 0) > 0:
-                print(f"Final combined asset for {region_name} is: {tasks[0].config['assetId']}")
+                print(f"Final combined asset for {region_name}")
 
         # Wait between regions to avoid API limits if processing multiple large regions
-        time.sleep(60)
+        time.sleep(20)
