@@ -13,9 +13,11 @@ def pretrain():
     On full images from Yang dataset. (all years)
     '''
     print(f'Started pre-training...')
+    print(f'Using {device}...')
+
     config = {
         'val_ratio':0.2,
-        'batch_size':2,
+        'batch_size':32,
         'data_type':'mae',
         'lr':1e-4,
         'weight_decay':0.5,
@@ -48,7 +50,7 @@ def segmentation_train():
     print(f'Started segmentation-training...')
     config = {
         'val_ratio':0.2,
-        'batch_size':32,
+        'batch_size':2,
         'data_type':'segmentation',
         'lr':1e-4,
         'weight_decay':0.5,

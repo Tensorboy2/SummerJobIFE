@@ -297,7 +297,7 @@ class ConvNeXtV2MAE(nn.Module):
         super().__init__()
         self.mask_ratio = mask_ratio
         self.patch_size = 16  # Effective patch size after 4x4 stem + 3 2x2 downsamples
-        
+        self.in_chans = in_chans
         self.encoder = ConvNeXtV2Encoder(in_chans, depths, dims)
         self.decoder = ConvNeXtV2Decoder(dims, decoder_dims, in_chans)
         
@@ -316,9 +316,9 @@ class ConvNeXtV2MAE(nn.Module):
         assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
         
         h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
+        x = imgs.reshape(shape=(imgs.shape[0], self.in_chans, h, p, w, p))
         x = torch.einsum('nchpwq->nhwpqc', x)
-        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))
+        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * self.in_chans))
         return x
     
     def unpatchify(self, x):
@@ -330,9 +330,9 @@ class ConvNeXtV2MAE(nn.Module):
         h = w = int(x.shape[1]**.5)
         assert h * w == x.shape[1]
         
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, 3))
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, self.in_chans))
         x = torch.einsum('nhwpqc->nchpwq', x)
-        imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
+        imgs = x.reshape(shape=(x.shape[0], self.in_chans, h * p, h * p))
         return imgs
     
     def random_masking(self, x, mask_ratio):
@@ -396,7 +396,6 @@ class ConvNeXtV2MAE(nn.Module):
     def forward(self, imgs, mask_ratio=None):
         if mask_ratio is None:
             mask_ratio = self.mask_ratio
-            
         latent, mask, ids_restore, features = self.forward_encoder(imgs, mask_ratio)
         pred = self.forward_decoder(latent, ids_restore)
         loss = self.forward_loss(imgs, pred, mask)

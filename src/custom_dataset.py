@@ -96,7 +96,7 @@ def get_dataloaders(config):
 
 
     print(
-        f'\n Dataset:\n'
+        f'Dataset:\n'
         f'-  Type: {config["data_type"]}\n'
         f'-  Length: {len(full_dataset)}\n'
         f'-  Validation ratio: {config["val_ratio"]}\n'
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     train, val = get_dataloaders(config=config)
 
     for img, mask in train:
-        print(mask.shape)
+        print(img.shape)
         y_indices, x_indices = torch.where(mask[0,0] > 0)
         if len(x_indices) > 0 or len(y_indices) > 0:
             img = img[0]       # [C, H, W]
