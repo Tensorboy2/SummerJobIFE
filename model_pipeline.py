@@ -21,14 +21,14 @@ def pretrain():
         'data_type':'mae',
         'lr':1e-3,
         'weight_decay':0.05,
-        'num_epochs':1,
+        'num_epochs':100,
         'decay': 'cosine',
         'warmup_steps': 200,
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
     }
-    model = ConvNeXtV2MAE().to(device=device)
+    model = ConvNeXtV2MAE(mask_ratio=0.6).to(device=device)
     train_loader, val_loader = get_dataloaders(config=config)
     trainer = MAETrainer(model=model,
                train_loader=train_loader,
