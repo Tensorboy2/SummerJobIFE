@@ -88,14 +88,14 @@ class MAETrainer:
             metrics['loss'] += loss
             metrics['time'] += time.time() - start
 
-            if batch_idx % 10 == 0:
-                print(f"Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} | "
-                      f"Loss: {loss:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | "
-                      f"Time: {metrics['time']:.2f}s")
+            # if batch_idx % 10 == 0:
+                # print(f"Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} | "
+                #       f"Loss: {loss:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | "
+                #       f"Time: {metrics['time']:.2f}s")
 
         metrics = {k: v / len(self.train_loader) for k, v in metrics.items()}
         self.train_history['loss'].append(metrics['loss'])
-        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}")
+        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}\n")
         return metrics
 
     @torch.no_grad()
@@ -110,13 +110,13 @@ class MAETrainer:
             metrics['loss'] += loss
             metrics['time'] += time.time() - start
 
-            if batch_idx % 10 == 0:
-                print(f"Epoch {epoch} | Validation Batch {batch_idx}/{len(self.val_loader)} | "
-                      f"Loss: {loss:.4f} | Time: {metrics['time']:.2f}s")
+            # if batch_idx % 10 == 0:
+            #     print(f"Epoch {epoch} | Validation Batch {batch_idx}/{len(self.val_loader)} | "
+            #           f"Loss: {loss:.4f} | Time: {metrics['time']:.2f}s")
 
         metrics = {k: v / len(self.val_loader) for k, v in metrics.items()}
         self.val_history['loss'].append(metrics['loss'])
-        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}")
+        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}\n")
         return metrics
 
     def save_checkpoint(self, path="best_model.pt"):
@@ -134,4 +134,4 @@ class MAETrainer:
             if val_metrics["loss"] < best_loss:
                 best_loss = val_metrics["loss"]
                 self.save_checkpoint()
-                print(f"New best model saved! Loss: {best_loss:.4f}")
+                print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")

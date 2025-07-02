@@ -83,7 +83,7 @@ def get_dataloaders(config):
         shuffle=True,
         num_workers=0,
         pin_memory=True,
-        drop_last=True
+        drop_last=False
     )
     val_loader = DataLoader(
         val_dataset,
