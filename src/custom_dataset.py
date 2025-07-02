@@ -9,8 +9,8 @@ def get_mae_transforms():
         # Optional: add noise or jitter for slight regularization
         T.Lambda(lambda x: x + 0.01 * torch.randn_like(x)),  # Light Gaussian noise
         T.Lambda(lambda x: torch.clamp(x, 0.0, 1.0)),        # Clamp after noise
-        T.RandomHorizontalFlip(p=0.1),
-        T.RandomVerticalFlip(p=0.1),
+        T.RandomHorizontalFlip(p=0.5),
+        T.RandomVerticalFlip(p=0.5),
         # Optionally resize (depends on your ConvNeXt patch size)
         # T.Resize((256, 256)),  # Only if your data isn't already this size
     ])

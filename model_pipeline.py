@@ -2,6 +2,7 @@ import torch.optim as op
 from src.custom_dataset import get_dataloaders
 from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
 from src.train_mae import MAETrainer
+from src.train_segmentation import SegmentationTrainer
 import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -19,11 +20,11 @@ def pretrain():
         'val_ratio':0.2,
         'batch_size':128,
         'data_type':'mae',
-        'lr':1e-3,
-        'weight_decay':0.05,
+        'lr':0.0008,
+        'weight_decay':0.1,
         'num_epochs':100,
         'decay': 'cosine',
-        'warmup_steps': 200,
+        'warmup_steps': 500,
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
@@ -52,11 +53,11 @@ def segmentation_train():
         'val_ratio':0.2,
         'batch_size':128,
         'data_type':'segmentation',
-        'lr':1e-3,
-        'weight_decay':0.05,
-        'num_epochs':1,
+        'lr':0.0008,
+        'weight_decay':0.1,
+        'num_epochs':100,
         'decay': 'cosine',
-        'warmup_steps': 200,
+        'warmup_steps': 500,
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
@@ -68,6 +69,13 @@ def segmentation_train():
     print("Loaded pretrained encoder from:", encoder_ckpt_path)
 
     train_loader, val_loader = get_dataloaders(config=config)
+
+    trainer = SegmentationTrainer(model=model,
+                                 train_loader=train_loader,
+                                 val_loader=val_loader,
+                                 device=device,
+                                 config=config)
+    trainer.train()
 
     return 0
 
