@@ -126,6 +126,12 @@ class MAETrainer:
         }
         torch.save(checkpoint, path)
 
+    def save_encoder_checkpoint(self, path="pretrained_encoder.pt"):
+        checkpoint = {
+            'encoder': self.model.encoder.state_dict()
+        }
+        torch.save(checkpoint, path)
+
     def train(self):
         best_loss = float('inf')
         for epoch in range(1, self.config["num_epochs"] + 1):
@@ -133,5 +139,6 @@ class MAETrainer:
             val_metrics = self.validate(epoch)
             if val_metrics["loss"] < best_loss:
                 best_loss = val_metrics["loss"]
-                self.save_checkpoint()
+                # self.save_checkpoint()
+                self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")

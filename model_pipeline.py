@@ -20,8 +20,8 @@ def pretrain():
         'batch_size':128,
         'data_type':'mae',
         'lr':1e-3,
-        'weight_decay':0.5,
-        'num_epochs':100,
+        'weight_decay':0.05,
+        'num_epochs':1,
         'decay': 'cosine',
         'warmup_steps': 200,
         'use_amp': True,
@@ -50,11 +50,11 @@ def segmentation_train():
     print(f'Started segmentation-training...')
     config = {
         'val_ratio':0.2,
-        'batch_size':32,
+        'batch_size':128,
         'data_type':'segmentation',
         'lr':1e-3,
-        'weight_decay':0.5,
-        'num_epochs':100,
+        'weight_decay':0.05,
+        'num_epochs':1,
         'decay': 'cosine',
         'warmup_steps': 200,
         'use_amp': True,
@@ -62,7 +62,13 @@ def segmentation_train():
         'max_grad_norm': 1.0,
     }
     model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
+    encoder_ckpt_path = "pretrained_encoder.pt"
+    ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
+    model.encoder.load_state_dict(ckpt['encoder'], strict=True)
+    print("Loaded pretrained encoder from:", encoder_ckpt_path)
+
     train_loader, val_loader = get_dataloaders(config=config)
+
     return 0
 
 
