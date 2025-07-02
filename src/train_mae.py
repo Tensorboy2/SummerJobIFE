@@ -81,21 +81,21 @@ class MAETrainer:
         self.model.train()
         metrics = defaultdict(float)
 
+        start = time.time()
         for batch_idx, img in enumerate(self.train_loader):
-            start = time.time()
             loss = self._step(img, training=True)
 
             metrics['loss'] += loss
-            metrics['time'] += time.time() - start
+            if batch_idx % 2 == 0:
+                print(f"    Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} ")
+        tot_time = time.time() - start
 
-            # if batch_idx % 10 == 0:
-                # print(f"Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} | "
                 #       f"Loss: {loss:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | "
                 #       f"Time: {metrics['time']:.2f}s")
 
         metrics = {k: v / len(self.train_loader) for k, v in metrics.items()}
         self.train_history['loss'].append(metrics['loss'])
-        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {metrics['loss']:.2f}\n")
+        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}, LR: {self.scheduler.get_last_lr()[0]:.5f}, Epoch time: {tot_time:.2f}\n")
         return metrics
 
     @torch.no_grad()
@@ -103,12 +103,12 @@ class MAETrainer:
         self.model.eval()
         metrics = defaultdict(float)
 
+        start = time.time()
         for batch_idx, img in enumerate(self.val_loader):
-            start = time.time()
             loss = self._step(img, training=False)
 
             metrics['loss'] += loss
-            metrics['time'] += time.time() - start
+        tot_time = time.time() - start
 
             # if batch_idx % 10 == 0:
             #     print(f"Epoch {epoch} | Validation Batch {batch_idx}/{len(self.val_loader)} | "
@@ -116,7 +116,7 @@ class MAETrainer:
 
         metrics = {k: v / len(self.val_loader) for k, v in metrics.items()}
         self.val_history['loss'].append(metrics['loss'])
-        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {metrics['loss']:.2f}\n")
+        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {tot_time:.2f}\n")
         return metrics
 
     def save_checkpoint(self, path="best_model.pt"):
