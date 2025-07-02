@@ -86,7 +86,7 @@ def get_dataloaders(config):
         train_dataset,
         batch_size=config['batch_size'],
         shuffle=True,
-        num_workers=2,
+        num_workers=4,
         pin_memory=True,
         drop_last=False
     )
@@ -94,7 +94,7 @@ def get_dataloaders(config):
         val_dataset,
         batch_size=config['batch_size'],
         shuffle=False,
-        num_workers=2,
+        num_workers=4,
         pin_memory=True,
         drop_last=False
     )

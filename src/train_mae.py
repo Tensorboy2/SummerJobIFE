@@ -95,7 +95,7 @@ class MAETrainer:
 
         metrics = {k: v / len(self.train_loader) for k, v in metrics.items()}
         self.train_history['loss'].append(metrics['loss'])
-        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}\n")
+        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {metrics['loss']:.2f}\n")
         return metrics
 
     @torch.no_grad()
@@ -116,7 +116,7 @@ class MAETrainer:
 
         metrics = {k: v / len(self.val_loader) for k, v in metrics.items()}
         self.val_history['loss'].append(metrics['loss'])
-        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}\n")
+        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {metrics['loss']:.2f}\n")
         return metrics
 
     def save_checkpoint(self, path="best_model.pt"):
