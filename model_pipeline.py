@@ -107,6 +107,6 @@ def finetune():
 
 
 if __name__ == '__main__':
-    pretrain()
+    # pretrain()
     segmentation_train()
     finetune()
