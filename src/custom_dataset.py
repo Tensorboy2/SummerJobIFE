@@ -4,6 +4,17 @@ import os
 import torchvision.transforms as T
 import numpy as np
 
+def get_mae_transforms():
+    return T.Compose([
+        # Optional: add noise or jitter for slight regularization
+        T.Lambda(lambda x: x + 0.01 * torch.randn_like(x)),  # Light Gaussian noise
+        T.Lambda(lambda x: torch.clamp(x, 0.0, 1.0)),        # Clamp after noise
+        T.RandomHorizontalFlip(p=0.1),
+        T.RandomVerticalFlip(p=0.1),
+        # Optionally resize (depends on your ConvNeXt patch size)
+        # T.Resize((256, 256)),  # Only if your data isn't already this size
+    ])
+
 class MaskedAutoEncoderDataset(Dataset):
     '''
     Dataset for training masked auto encoder.
@@ -59,14 +70,8 @@ def get_dataloaders(config):
 
 
     if config['data_type']=='mae':
-        
-        transform = T.Compose([
-            T.RandomResizedCrop(size=(256, 256), scale=(0.8, 1.0)),
-            T.RandomHorizontalFlip(p=0.5),
-            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        ])
-        
-        full_dataset = MaskedAutoEncoderDataset(data_path, transform=None)
+    
+        full_dataset = MaskedAutoEncoderDataset(data_path, transform=get_mae_transforms())
     
     elif config['data_type']=='segmentation':
 
