@@ -17,7 +17,7 @@ def pretrain():
 
     config = {
         'val_ratio':0.2,
-        'batch_size':32,
+        'batch_size':128,
         'data_type':'mae',
         'lr':1e-3,
         'weight_decay':0.5,
