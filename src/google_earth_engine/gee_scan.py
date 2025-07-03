@@ -486,8 +486,8 @@ if __name__ == '__main__':
     # Define regions to process. For Europe, you could use a more precise geometry.
     regions = {
         # 'netherland_test_area_4': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
-        'netherland_test_area_5': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
-        # 'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
+        # 'netherland_test_area_5': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
+        'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
     }
     
     # Define the years for consistency masking
@@ -520,7 +520,7 @@ if __name__ == '__main__':
         
         if tasks:
             # Monitor this region's tasks (should be just one export task for the combined asset)
-            final_states = pipeline.monitor_tasks(tasks, interval=30, max_wait_hours=1) # Increased max_wait_hours
+            final_states = pipeline.monitor_tasks(tasks, interval=30, max_wait_hours=2) # Increased max_wait_hours
             print(f"Region {region_name} completed with states: {final_states}")
             
             # Print asset ID for easy access in GEE Code Editor
