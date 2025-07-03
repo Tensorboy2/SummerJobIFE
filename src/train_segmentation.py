@@ -5,7 +5,31 @@ from contextlib import nullcontext
 from collections import defaultdict
 import math
 import time
+from typing import Dict
 
+@torch.jit.script
+def compute_segmentation_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5) -> Dict[str, float]:
+    pred = (pred > threshold).float()
+    target = target.float()
+
+    tp = torch.sum(pred * target)
+    fp = torch.sum(pred * (1 - target))
+    fn = torch.sum((1 - pred) * target)
+    tn = torch.sum((1 - pred) * (1 - target))
+
+    eps = 1e-6
+
+    precision = tp / (tp + fp + eps)
+    recall = tp / (tp + fn + eps)
+    dice = (2 * tp) / (2 * tp + fp + fn + eps)
+    iou = tp / (tp + fp + fn + eps)
+
+    return {
+        "precision": float(precision),
+        "recall": float(recall),
+        "dice": float(dice),
+        "iou": float(iou),
+    }
 
 class SegmentationTrainer:
     def __init__(self, model, train_loader, val_loader, device, config):
@@ -14,6 +38,8 @@ class SegmentationTrainer:
         self.val_loader = val_loader
         self.device = device
         self.config = config
+        self.path=f"pretrained_{self.config['specific_name']}.pt"
+
 
         self.use_amp = config.get('use_amp', True)
         self.max_grad_norm = config.get('max_grad_norm', 1.0)
@@ -28,8 +54,9 @@ class SegmentationTrainer:
         )
 
         self.scheduler = self._build_scheduler()
-        self.train_history = {'loss': []}
-        self.val_history = {'loss': []}
+        self.loss = {'train': [],'val': []}
+
+        self.val_metrics = {"precision": [], "recall": [], "dice": [], "iou": []}
 
         if hasattr(torch, 'compile') and config.get('compile', True):
             self.model = torch.compile(self.model)
@@ -76,18 +103,22 @@ class SegmentationTrainer:
                 self.optimizer.step()
 
             self.scheduler.step()
+        else:
+            metrics = compute_segmentation_metrics(pred, mask)
+
+            for k, v in metrics.items():
+                self.val_metrics[k].append(v)
 
         return loss.item()
 
     def train_epoch(self, epoch):
         self.model.train()
-        metrics = defaultdict(float)
-
+        total_loss=0
         start = time.time()
         for batch_idx, (img,mask) in enumerate(self.train_loader):
             loss = self._step(img,mask, training=True)
 
-            metrics['loss'] += loss
+            total_loss += loss
             if batch_idx % 2 == 0:
                 print(f"    Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} ")
         tot_time = time.time() - start
@@ -95,45 +126,45 @@ class SegmentationTrainer:
                 #       f"Loss: {loss:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | "
                 #       f"Time: {metrics['time']:.2f}s")
 
-        metrics = {k: v / len(self.train_loader) for k, v in metrics.items()}
-        self.train_history['loss'].append(metrics['loss'])
-        print(f"\n[Train Epoch {epoch}] Loss: {metrics['loss']:.4f}, LR: {self.scheduler.get_last_lr()[0]:.5f}, Epoch time: {tot_time:.2f}\n")
-        return metrics
+        avg_loss = total_loss/ len(self.train_loader)
+        self.loss['train'].append(avg_loss)
+        print(f"\n[Train Epoch {epoch}] Loss: {avg_loss:.4f}, LR: {self.scheduler.get_last_lr()[0]:.5f}, Epoch time: {tot_time:.2f}\n")
+        
 
     @torch.no_grad()
     def validate(self, epoch):
         self.model.eval()
-        metrics = defaultdict(float)
+        total_loss=0
 
         start = time.time()
         for batch_idx, (img,mask) in enumerate(self.val_loader):
             loss = self._step(img,mask, training=False)
 
-            metrics['loss'] += loss
+            total_loss += loss
         tot_time = time.time() - start
 
             # if batch_idx % 10 == 0:
             #     print(f"Epoch {epoch} | Validation Batch {batch_idx}/{len(self.val_loader)} | "
             #           f"Loss: {loss:.4f} | Time: {metrics['time']:.2f}s")
 
-        metrics = {k: v / len(self.val_loader) for k, v in metrics.items()}
-        self.val_history['loss'].append(metrics['loss'])
-        print(f"\n[Validation Epoch {epoch}] Loss: {metrics['loss']:.4f}, Epoch time: {tot_time:.2f}\n")
-        return metrics
+        avg_loss = total_loss/ len(self.val_loader)
+        self.loss['val'].append(avg_loss)
+        print(f"\n[Validation Epoch {epoch}] Loss: {avg_loss:.4f}, Epoch time: {tot_time:.2f}\n")
 
-    def save_checkpoint(self, path="best_model.pt"):
+
+    def save_checkpoint(self):
         checkpoint = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict()
         }
-        torch.save(checkpoint, path)
+        torch.save(checkpoint, self.path)
 
-    def save_encoder_checkpoint(self, path="pretrained_model.pt"):
+    def save_encoder_checkpoint(self):
         checkpoint = {
             'encoder': self.model.encoder.state_dict(),
             'decoder': self.model.decoder.state_dict()
         }
-        torch.save(checkpoint, path)
+        torch.save(checkpoint, self.path)
 
     def train(self):
         best_loss = float('inf')
@@ -145,3 +176,5 @@ class SegmentationTrainer:
                 # self.save_checkpoint()
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
+        torch.save(self.val_metrics,'validation_metrics_segmentation.pt')
+        torch.save(self.loss,'loss_segmentation.pt')

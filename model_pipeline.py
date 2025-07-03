@@ -1,6 +1,7 @@
 import torch.optim as op
 from src.custom_dataset import get_dataloaders
-from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+# from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
 from src.train_mae import MAETrainer
 from src.train_segmentation import SegmentationTrainer
 import torch
@@ -28,6 +29,7 @@ def pretrain():
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
+        'specific_name':'convnextv2rms',
     }
     model = ConvNeXtV2MAE(mask_ratio=0.6).to(device=device)
     train_loader, val_loader = get_dataloaders(config=config)
@@ -61,6 +63,7 @@ def segmentation_train():
         'use_amp': True,
         'compile': True,
         'max_grad_norm': 1.0,
+        'specific_name':'convnextv2rms',
     }
     model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
     encoder_ckpt_path = "pretrained_encoder.pt"
@@ -107,6 +110,6 @@ def finetune():
 
 
 if __name__ == '__main__':
-    # pretrain()
+    pretrain()
     segmentation_train()
     finetune()
