@@ -169,10 +169,11 @@ class SegmentationTrainer:
     def train(self):
         best_loss = float('inf')
         for epoch in range(1, self.config["num_epochs"] + 1):
-            _ = self.train_epoch(epoch)
-            val_metrics = self.validate(epoch)
-            if val_metrics["loss"] < best_loss:
-                best_loss = val_metrics["loss"]
+            self.train_epoch(epoch)
+            self.validate(epoch)
+            val_loss = self.loss['val'][epoch-1]
+            if val_loss < best_loss:
+                best_loss = val_loss
                 # self.save_checkpoint()
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
