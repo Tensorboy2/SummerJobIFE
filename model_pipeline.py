@@ -66,7 +66,7 @@ def segmentation_train():
         'specific_name':'convnextv2rms',
     }
     model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
-    encoder_ckpt_path = "pretrained_encoder.pt"
+    encoder_ckpt_path = "pretrained_encoder_convnextv2rms.pt"
     ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
     model.encoder.load_state_dict(ckpt['encoder'], strict=True)
     print("Loaded pretrained encoder from:", encoder_ckpt_path)

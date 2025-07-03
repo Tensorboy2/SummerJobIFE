@@ -138,3 +138,5 @@ class MAETrainer:
                 # self.save_checkpoint()
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
+        # torch.save(self.val_metrics,'validation_metrics_mae.pt')
+        torch.save(self.loss,'loss_mae.pt')
