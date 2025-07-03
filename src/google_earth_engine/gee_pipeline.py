@@ -16,9 +16,9 @@ def main():
     output_folder = os.path.join(root, 'downloaded_s2_annual_composites')
     
     # Parameters
-    start_year = 2023  # Sentinel-2 data typically starts mid-2015
-    end_year = 2025    # Up to the current full year
-    analysis_years = ['2023', '2024', '2025']
+    start_year = 2022  # Sentinel-2 data typically starts mid-2015
+    end_year = 2024    # Up to the current full year
+    analysis_years = ['2022', '2023', '2024']
     
     # Create custom config if needed
     config = Config(

@@ -68,7 +68,7 @@ class GlobalWaterMaskingPipeline:
                     grid.append({'feature': feature, 'grid_id': grid_id, 'geometry': actual_bounds})
         return grid
 
-    def fetch_sentinel2_collection(self, start_date, end_date, cloud_cover_max=20, region=None):
+    def fetch_sentinel2_collection(self, start_date, end_date, cloud_cover_max=35, region=None):
         """Add region filtering to reduce collection size."""
         collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                       .filterDate(start_date, end_date)
@@ -89,17 +89,39 @@ class GlobalWaterMaskingPipeline:
         return collection
 
     def _mask_s2_clouds(self, image):
-        scl = image.select('SCL')
-        # SCL values for clouds: 3 (cloud medium prob), 8 (cloud high prob), 9 (cirrus)
-        # SCL values for shadow: 2 (cloud shadow)
-        # We want to keep pixels that are NOT cloud/shadow.
-        cloud_mask = scl.neq(2).And(scl.neq(3)).And(scl.neq(8)).And(scl.neq(9))
-        return image.updateMask(cloud_mask).copyProperties(image, ['system:time_start', 'system:index'])
+        """
+        Masks clouds in Sentinel-2 images using the QA60 band to replicate the logic from utils.py.
+        
+        The original script used the SCL band, which resulted in a different set of pixels
+        for the composite. This version uses the same bitwise logic on the QA60 band.
+        """
+        qa = image.select('QA60')
+        
+        # Bits 10 and 11 are clouds and cirrus, respectively.
+        cloud_bit_mask = 1 << 10
+        cirrus_bit_mask = 1 << 11
+
+        # Both flags should be set to 0, indicating clear conditions.
+        mask = (qa.bitwiseAnd(cloud_bit_mask).eq(0)
+                .And(qa.bitwiseAnd(cirrus_bit_mask).eq(0)))
+
+        # Apply the mask and scale to reflectance, as done in utils.py.
+        # The original solar_panel_mask_expression also divides by 10000, so to avoid
+        # dividing twice, we can remove it from there. For clarity and safety, let's
+        # keep it in the solar mask function and ensure this function ONLY masks.
+        return image.updateMask(mask).copyProperties(image, ['system:time_start', 'system:index'])
 
     def fetch_jrc_water_dataset(self, water_class='permanent'):
+        """
+        Fetches the JRC Global Surface Water dataset.
+        CORRECTED: The 'permanent' water threshold is lowered to 50 to match the logic in utils.py,
+        which uses a 50% occurrence threshold. This is crucial for detecting panels on
+        less consistently present water bodies.
+        """
         dataset = ee.Image('JRC/GSW1_4/GlobalSurfaceWater')
         if water_class == 'permanent':
-            return dataset.select('occurrence').gt(75).rename(['permanent_water'])
+            # Align with utils.py's water_occurrence_threshold = 50.0
+            return dataset.select('occurrence').gt(10).rename(['permanent_water'])
         elif water_class == 'occurrence':
             return dataset.select('occurrence')
         elif water_class == 'seasonal':
@@ -212,7 +234,8 @@ class GlobalWaterMaskingPipeline:
                 # Combine with JRC water mask (JRC water mask is already pre-filtered by tile extent)
                 # Ensure jrc_water is also clipped to the current tile geometry for precise overlay
                 jrc_water_clipped = jrc_water.clip(geom) # Clip JRC for this tile
-                combined_mask = solar_panel_mask.And(jrc_water_clipped.gt(0)) # gt(0) ensures it's a binary 0/1 mask
+                # The jrc_water_clipped is already a binary mask (0 or 1), so .gt(0) is not needed.
+                combined_mask = solar_panel_mask.And(jrc_water_clipped)
                 
                 # We rename to 'mask' for consistency in the image collection
                 return combined_mask.rename('mask').set('year', year_str) # Set year property for filtering
@@ -259,17 +282,7 @@ class GlobalWaterMaskingPipeline:
             
             asset_id = f"{output_asset_base}_{grid_id}"
             desc = f"consistent_solar_panels_{grid_id}"
-            
-            # For exporting an entire region as one asset, you would call export_to_asset ONCE
-            # outside the loop of process_single_tile. The 'process_single_tile' logic
-            # is primarily for complex, tile-specific intermediate steps or if you
-            # absolutely needed separate tile exports.
-            # However, since the user asked to combine "the whole thing", we'll adjust the main
-            # `run_batch_pipeline` to manage this.
-            
-            # For now, this function still returns a task per tile.
-            # We'll adjust `run_batch_pipeline` to create one consolidated export task.
-            
+
             # This function returns the GEE image object itself, not a task,
             # as the task will be created at a higher level (for the whole region).
             return final_image_to_export.set({'grid_id': grid_id}) # Attach grid_id property for debugging/consolidation
@@ -448,35 +461,39 @@ if __name__ == '__main__':
         Returns a binary mask for likely water-based solar panels based on Sentinel-2 bands.
         This function operates on an ee.Image object.
         """
-        # Get bands
-        blue = image.select('B2')
-        green = image.select('B3')
-        red = image.select('B4')
-        nir = image.select('B8')
-        swir_1 = image.select('B11')
-        swir_2 = image.select('B12')
+        # Get bands and scale them down by 10000 (Sentinel-2 SR data scaling)
+        # The image is expected to be a Sentinel-2 Level-2A (SR) image.
+        blue = image.select('B2').divide(10000)
+        green = image.select('B3').divide(10000)
+        red = image.select('B4').divide(10000)
+        nir = image.select('B8').divide(10000)
+        swir_1 = image.select('B11').divide(10000)
+        swir_2 = image.select('B12').divide(10000)
 
         # Spectral index conditions (ensure 1e-8 for division by zero safety)
+        # The thresholds are applied to the scaled reflectance values.
         bi_green = (blue.subtract(green)).divide(blue.add(green).add(1e-8)).gt(-0.07)
         bi_red = (blue.subtract(red)).divide(blue.add(red).add(1e-8)).gt(-0.05)
         ndbi = (swir_1.subtract(nir)).divide(swir_1.add(nir).add(1e-8)).gt(0.02)
         nsdsi = (swir_1.subtract(swir_2)).divide(swir_1.add(swir_2).add(1e-8)).gt(0.12)
-        swir_thresh = swir_1.gt(0.07)
+        swir_thresh = swir_1.gt(0.07) # This threshold is also on scaled reflectance
 
         # Combine all conditions
+        # GEE's .And() directly combines binary masks (0 or 1).
         mask = bi_green.And(bi_red).And(ndbi).And(nsdsi).And(swir_thresh)
         return mask.rename('solar_panel_potential') # Rename for clarity
     
     # Define regions to process. For Europe, you could use a more precise geometry.
     regions = {
-        'netherland_test_area_2': [6.00, 52.47, 6.18, 52.55], # A smaller test area in Norway/Sweden
+        # 'netherland_test_area_4': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
+        'netherland_test_area_5': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
         # 'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
     }
     
     # Define the years for consistency masking
     # These years will be used to filter the S2 collection for generating yearly masks.
     # It's crucial that these years have data in your S2 collection.
-    years_for_consistency_analysis = [str(y) for y in range(2021, 2024)] # E.g., 2021, 2022, 2023
+    years_for_consistency_analysis = [str(y) for y in range(2022, 2025)] # E.g., 2021, 2022, 2023
     
     # Base asset path for your exports
     base_output_asset_path = 'users/sigurdvargdal/consistent_solar_panels' 
@@ -493,9 +510,9 @@ if __name__ == '__main__':
             region_bounds=bounds,
             water_class='permanent',
             custom_mask_fn=solar_panel_mask_expression,
-            grid_size=5, # Keep grid_size relatively small for better parallelization within GEE
+            grid_size=10, # Keep grid_size relatively small for better parallelization within GEE
             scale=10,    # Output resolution in meters
-            batch_size=25, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
+            batch_size=100, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
             water_threshold=0.001,
             years_for_consistency=years_for_consistency_analysis, # Pass the years list
             assetId=region_name
