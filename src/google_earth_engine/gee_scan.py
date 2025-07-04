@@ -223,21 +223,13 @@ class GlobalWaterMaskingPipeline:
                 composite_yearly = ee.Algorithms.If(
                     tile_size.gt(0),
                     self.create_composite(s2_yearly_collection),
-                    # Dummy image with expected bands if no S2 images for the year/tile
                     ee.Image.constant(0).rename(['B2', 'B3', 'B4', 'B8', 'B11', 'B12'])
                 )
                 composite_yearly = ee.Image(composite_yearly)
-
-                # Apply custom solar panel mask (returns a single boolean band)
-                solar_panel_mask = self.apply_custom_mask(composite_yearly, custom_mask_fn)
-
-                # Combine with JRC water mask (JRC water mask is already pre-filtered by tile extent)
-                # Ensure jrc_water is also clipped to the current tile geometry for precise overlay
                 jrc_water_clipped = jrc_water.clip(geom) # Clip JRC for this tile
-                # The jrc_water_clipped is already a binary mask (0 or 1), so .gt(0) is not needed.
-                combined_mask = solar_panel_mask.And(jrc_water_clipped)
-                
-                # We rename to 'mask' for consistency in the image collection
+                composite_over_water_only = composite_yearly.updateMask(jrc_water_clipped)
+                solar_panel_mask = self.apply_custom_mask(composite_over_water_only, custom_mask_fn)
+                combined_mask = solar_panel_mask
                 return combined_mask.rename('mask').set('year', year_str) # Set year property for filtering
 
             # --- Main logic for processing a tile ---
@@ -485,9 +477,9 @@ if __name__ == '__main__':
     
     # Define regions to process. For Europe, you could use a more precise geometry.
     regions = {
-        # 'netherland_test_area_4': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
-        # 'netherland_test_area_5': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
-        'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
+        # 'netherland_test_area_10': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
+        'netherland_test_area_11': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
+        # 'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
     }
     
     # Define the years for consistency masking
@@ -503,14 +495,14 @@ if __name__ == '__main__':
         print(f"\n=== Processing {region_name} ===")
         
         tasks = pipeline.run_regional_pipeline(
-            start_date=f'{years_for_consistency_analysis[0]}-01-01', # Start from the first year
-            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-01-01', # End after the last year
+            start_date=f'{years_for_consistency_analysis[0]}-05-01', # Start from the first year
+            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-08-01', # End after the last year
             output_asset_base=base_output_asset_path,
             region_name=region_name,
             region_bounds=bounds,
             water_class='permanent',
             custom_mask_fn=solar_panel_mask_expression,
-            grid_size=10, # Keep grid_size relatively small for better parallelization within GEE
+            grid_size=5, # Keep grid_size relatively small for better parallelization within GEE
             scale=10,    # Output resolution in meters
             batch_size=100, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
             water_threshold=0.001,

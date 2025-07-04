@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
 from contextlib import nullcontext
-from collections import defaultdict
 import math
 import time
 from typing import Dict
@@ -40,7 +39,6 @@ class SegmentationTrainer:
         self.config = config
         self.path=f"pretrained_{self.config['specific_name']}.pt"
 
-
         self.use_amp = config.get('use_amp', True)
         self.max_grad_norm = config.get('max_grad_norm', 1.0)
         self.scaler = GradScaler(enabled=self.use_amp)
@@ -56,6 +54,7 @@ class SegmentationTrainer:
         self.scheduler = self._build_scheduler()
         self.loss = {'train': [],'val': []}
 
+        # Store epoch-averaged metrics
         self.val_metrics = {"precision": [], "recall": [], "dice": [], "iou": []}
 
         if hasattr(torch, 'compile') and config.get('compile', True):
@@ -86,7 +85,7 @@ class SegmentationTrainer:
             if self.use_amp else nullcontext()
         with context:
             pred = self.model(img)
-            loss = F.binary_cross_entropy_with_logits(pred,mask)
+            loss = F.binary_cross_entropy_with_logits(pred, mask)
 
         if training:
             self.optimizer.zero_grad(set_to_none=True)
@@ -103,54 +102,62 @@ class SegmentationTrainer:
                 self.optimizer.step()
 
             self.scheduler.step()
+            return loss.item()
         else:
-            metrics = compute_segmentation_metrics(pred, mask)
-
-            for k, v in metrics.items():
-                self.val_metrics[k].append(v)
-
-        return loss.item()
+            # For validation, return both loss and metrics
+            # Apply sigmoid to get probabilities for metrics calculation
+            pred_probs = torch.sigmoid(pred)
+            metrics = compute_segmentation_metrics(pred_probs, mask)
+            return loss.item(), metrics
 
     def train_epoch(self, epoch):
         self.model.train()
-        total_loss=0
+        total_loss = 0
         start = time.time()
-        for batch_idx, (img,mask) in enumerate(self.train_loader):
-            loss = self._step(img,mask, training=True)
-
-            total_loss += loss
-            if batch_idx % 2 == 0:
-                print(f"    Epoch {epoch} | Batch {batch_idx}/{len(self.train_loader)} ")
-        tot_time = time.time() - start
-
-                #       f"Loss: {loss:.4f} | LR: {self.scheduler.get_last_lr()[0]:.5f} | "
-                #       f"Time: {metrics['time']:.2f}s")
-
-        avg_loss = total_loss/ len(self.train_loader)
-        self.loss['train'].append(avg_loss)
-        print(f"\n[Train Epoch {epoch}] Loss: {avg_loss:.4f}, LR: {self.scheduler.get_last_lr()[0]:.5f}, Epoch time: {tot_time:.2f}\n")
         
+        for batch_idx, (img, mask) in enumerate(self.train_loader):
+            loss = self._step(img, mask, training=True)
+            total_loss += loss
+            
+        tot_time = time.time() - start
+        avg_loss = total_loss / len(self.train_loader)
+        self.loss['train'].append(avg_loss)
+        
+        print(f"\n[Train Epoch {epoch}] Loss: {avg_loss:.4f}, LR: {self.scheduler.get_last_lr()[0]:.5f}, Epoch time: {tot_time:.2f}\n")
 
     @torch.no_grad()
     def validate(self, epoch):
         self.model.eval()
-        total_loss=0
-
+        total_loss = 0
+        
+        # Accumulate metrics for averaging
+        batch_metrics = {"precision": [], "recall": [], "dice": [], "iou": []}
+        
         start = time.time()
-        for batch_idx, (img,mask) in enumerate(self.val_loader):
-            loss = self._step(img,mask, training=False)
-
+        for batch_idx, (img, mask) in enumerate(self.val_loader):
+            loss, metrics = self._step(img, mask, training=False)
             total_loss += loss
+            
+            # Collect metrics from this batch
+            for key, value in metrics.items():
+                batch_metrics[key].append(value)
+                
         tot_time = time.time() - start
-
-            # if batch_idx % 10 == 0:
-            #     print(f"Epoch {epoch} | Validation Batch {batch_idx}/{len(self.val_loader)} | "
-            #           f"Loss: {loss:.4f} | Time: {metrics['time']:.2f}s")
-
-        avg_loss = total_loss/ len(self.val_loader)
+        
+        # Calculate epoch averages
+        avg_loss = total_loss / len(self.val_loader)
         self.loss['val'].append(avg_loss)
-        print(f"\n[Validation Epoch {epoch}] Loss: {avg_loss:.4f}, Epoch time: {tot_time:.2f}\n")
-
+        
+        # Calculate and store epoch-averaged metrics
+        epoch_metrics = {}
+        for key, values in batch_metrics.items():
+            avg_metric = sum(values) / len(values)
+            epoch_metrics[key] = avg_metric
+            self.val_metrics[key].append(avg_metric)
+        
+        print(f"\n[Validation Epoch {epoch}] Loss: {avg_loss:.4f}, Epoch time: {tot_time:.2f}")
+        print(f"Metrics - Precision: {epoch_metrics['precision']:.4f}, Recall: {epoch_metrics['recall']:.4f}, "
+              f"Dice: {epoch_metrics['dice']:.4f}, IoU: {epoch_metrics['iou']:.4f}\n")
 
     def save_checkpoint(self):
         checkpoint = {
@@ -177,5 +184,5 @@ class SegmentationTrainer:
                 # self.save_checkpoint()
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
-        torch.save(self.val_metrics,'validation_metrics_segmentation.pt')
-        torch.save(self.loss,'loss_segmentation.pt')
+        torch.save(self.val_metrics, self.config['specific_name']+'validation_metrics_segmentation.pt')
+        torch.save(self.loss, self.config['specific_name']+'loss_segmentation.pt')
