@@ -1,7 +1,7 @@
 import torch.optim as op
 from src.custom_dataset import get_dataloaders
-from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
-# from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+# from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
 from src.train_mae import MAETrainer
 from src.train_segmentation import SegmentationTrainer
 import torch

@@ -478,8 +478,8 @@ if __name__ == '__main__':
     # Define regions to process. For Europe, you could use a more precise geometry.
     regions = {
         # 'netherland_test_area_10': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
-        'netherland_test_area_11': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
-        # 'europe': [-10, 35, 40, 70], # Full Europe (will take a very long time to export)
+        # 'netherland_test_area_11': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
+        'europe2': [0, 30, 30, 60], # Full Europe (will take a very long time to export)
     }
     
     # Define the years for consistency masking
@@ -495,8 +495,8 @@ if __name__ == '__main__':
         print(f"\n=== Processing {region_name} ===")
         
         tasks = pipeline.run_regional_pipeline(
-            start_date=f'{years_for_consistency_analysis[0]}-05-01', # Start from the first year
-            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-08-01', # End after the last year
+            start_date=f'{years_for_consistency_analysis[0]}-08-01', # Start from the first year
+            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-07-01', # End after the last year
             output_asset_base=base_output_asset_path,
             region_name=region_name,
             region_bounds=bounds,
@@ -504,7 +504,7 @@ if __name__ == '__main__':
             custom_mask_fn=solar_panel_mask_expression,
             grid_size=5, # Keep grid_size relatively small for better parallelization within GEE
             scale=10,    # Output resolution in meters
-            batch_size=100, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
+            batch_size=1000, # Number of tiles to *prepare* at once (GEE handles server-side parallelism)
             water_threshold=0.001,
             years_for_consistency=years_for_consistency_analysis, # Pass the years list
             assetId=region_name

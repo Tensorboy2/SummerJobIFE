@@ -17,56 +17,63 @@ def get_mae_transforms():
 
 class MaskedAutoEncoderDataset(Dataset):
     '''
-    Dataset for training masked auto encoder.
+    Dataset for training masked autoencoder using .npy files.
     '''
     def __init__(self, folder, transform=None):
-        self.folder = folder
-        self.files = sorted([f for f in os.listdir(folder+'/images') if f.endswith(".pt")])
+        self.image_folder = os.path.join(folder, 'images')
+        self.files = sorted([f for f in os.listdir(self.image_folder) if f.endswith(".npy")])
         self.transform = transform
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
-        image = torch.load(os.path.join(self.folder, 'images', self.files[idx]))
-        # Extract image and mask
-        img = image.permute(2, 0, 1)/15  # [H, W, C] → [C, H, W]
+        path = os.path.join(self.image_folder, self.files[idx])
+        img = np.load(path)  # [H, W, C], float32
+
+        img = torch.from_numpy(img).permute(2, 0, 1) / 15.0  # Normalize and reshape to [C, H, W]
 
         if self.transform:
             img = self.transform(img)
-    
+
         return img
+
     
 class SegmentationDataset(Dataset):
     '''
-    Dataset for training on segmentation.
+    Dataset for training segmentation using .npy files.
     '''
     def __init__(self, folder, transform=None):
-        self.folder = folder
-        self.files = sorted([f for f in os.listdir(folder+'/images') if f.endswith(".pt")])
+        self.image_folder = os.path.join(folder, 'images')
+        self.mask_folder = os.path.join(folder, 'masks')
+        self.files = sorted([f for f in os.listdir(self.image_folder) if f.endswith(".npy")])
         self.transform = transform
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
-        image = torch.load(os.path.join(self.folder, 'images', self.files[idx]))
-        mask = torch.load(os.path.join(self.folder, 'masks', self.files[idx]))
+        name = self.files[idx]
+        img_path = os.path.join(self.image_folder, name)
+        mask_path = os.path.join(self.mask_folder, name)
 
-        # Extract image and mask
-        img = image.permute(2, 0, 1)/15  # [H, W, C] → [C, H, W]
-        mask = mask                 # [1, H, W]
+        img = np.load(img_path)       # [H, W, C], float32
+        mask = np.load(mask_path)     # [1, H, W] or [H, W]
+
+        img = torch.from_numpy(img).permute(2, 0, 1) / 15.0  # Normalize and reshape
+        mask = torch.from_numpy(mask)  # No need to permute if already [1, H, W]
 
         if self.transform:
             img = self.transform(img)
-    
+
         return img, mask
+
 
 def get_dataloaders(config):
     '''
     Function for fetching DataLoaders for training and validation.
     '''
-    data_path = 'src/data/processed_unique'  # where the .pt files are
+    data_path = 'src/data/processed_unique_npy'  # where the .pt files are
 
 
     if config['data_type']=='mae':
@@ -86,7 +93,7 @@ def get_dataloaders(config):
         train_dataset,
         batch_size=config['batch_size'],
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
         drop_last=False
     )
@@ -94,7 +101,7 @@ def get_dataloaders(config):
         val_dataset,
         batch_size=config['batch_size'],
         shuffle=False,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
         drop_last=False
     )
@@ -115,11 +122,21 @@ if __name__ == '__main__':
 
     config = {
         'val_ratio': 0.2,
-        'batch_size': 2,
+        'batch_size': 128,
         'data_type':'segmentation'
     }
 
     train, val = get_dataloaders(config=config)
+
+
+    # import time
+    # for i, batch in enumerate(train):
+    #     start = time.time()
+    #     # simulate training step (if needed)
+    #     time.sleep(0.01)  # optional
+    #     end = time.time()
+    #     print(f'Batch {i}: {end - start:.4f} sec')
+
 
     for img, mask in train:
         print(img.shape)
