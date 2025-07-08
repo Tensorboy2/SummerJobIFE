@@ -85,7 +85,7 @@ def get_dataloaders(config):
         full_dataset = SegmentationDataset(data_path, transform=None)
 
 
-    train_size = int((1 - config['val_ratio']) * len(full_dataset))
+    train_size = int((1 - config.get('val_ratio',0.2)) * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
 
@@ -93,7 +93,7 @@ def get_dataloaders(config):
         train_dataset,
         batch_size=config['batch_size'],
         shuffle=True,
-        num_workers=6,
+        num_workers=config.get('num_workers', 2),  # Default to 2 if not specified
         pin_memory=True,
         drop_last=False
     )
@@ -101,7 +101,7 @@ def get_dataloaders(config):
         val_dataset,
         batch_size=config['batch_size'],
         shuffle=False,
-        num_workers=6,
+        num_workers=config.get('num_workers', 2),  # Default to 2 if not specified
         pin_memory=True,
         drop_last=False
     )

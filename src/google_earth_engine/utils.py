@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass
+import scipy.ndimage
 
 
 @dataclass
@@ -28,6 +29,9 @@ class Config:
     cloud_threshold: float = 35.0
     water_occurrence_threshold: float = 50.0
     crs: str = 'EPSG:4326'
+    
+    # Sentinel-1 water detection threshold (dB)
+    s1_water_threshold: float = -15.0
     
     # Band indices for Sentinel-2
     bands: Dict[str, int] = None
@@ -57,7 +61,7 @@ class EarthEngineManager:
 
 
 class SentinelProcessor:
-    """Handles Sentinel-2 data processing and downloading."""
+    """Handles Sentinel-1 and Sentinel-2 data processing and downloading."""
     
     def __init__(self, config: Config):
         self.config = config
@@ -107,6 +111,33 @@ class SentinelProcessor:
             return composite
         except Exception as e:
             print(f"    Warning: Failed to create composite for {lat:.4f}_{lon:.4f} in {year}: {e}")
+            return None
+
+    def get_s1_annual_composite(self, lon: float, lat: float, year: int) -> Optional[ee.Image]:
+        """Get annual median composite for Sentinel-1 data."""
+        region = self.create_region(lon, lat)
+        
+        dataset = (
+            ee.ImageCollection('COPERNICUS/S1_GRD')
+            .filterBounds(region)
+            .filterDate(f'{year}-01-01', f'{year}-12-31')
+            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
+            .filter(ee.Filter.eq('instrumentMode', 'IW'))
+            .select(['VV', 'VH'])
+        )
+
+        count = dataset.size().getInfo()
+        if count == 0:
+            print(f"    Warning: No Sentinel-1 images found for {lat:.4f}_{lon:.4f} in year {year}")
+            return None
+
+        try:
+            composite = dataset.median()
+            _ = composite.getInfo()  # Test if composite is valid
+            return composite
+        except Exception as e:
+            print(f"    Warning: Failed to create S1 composite for {lat:.4f}_{lon:.4f} in {year}: {e}")
             return None
 
     def download_rgb_png(self, composite: ee.Image, region: ee.Geometry, 
@@ -166,6 +197,29 @@ class SentinelProcessor:
             print(f"    Failed to download multispectral TIFF: {e}")
             return False
 
+    def download_s1_tif(self, composite: ee.Image, region: ee.Geometry, 
+                       output_path: str) -> bool:
+        """Download Sentinel-1 GeoTIFF image."""
+        download_params = {
+            'crs': self.config.crs,
+            'region': region.getInfo()['coordinates'],
+            'format': 'GEO_TIFF',
+            'dimensions': self.config.image_dimensions
+        }
+
+        try:
+            download_url = composite.getDownloadURL(download_params)
+            response = requests.get(download_url, stream=True)
+            response.raise_for_status()
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return True
+        except Exception as e:
+            print(f"    Failed to download Sentinel-1 TIFF: {e}")
+            return False
+
     def download_water_mask(self, region: ee.Geometry, output_path: str) -> bool:
         """Download water occurrence mask."""
         try:
@@ -189,6 +243,34 @@ class SentinelProcessor:
             return True
         except Exception as e:
             print(f"    Failed to download water mask: {e}")
+            return False
+
+    def download_s1_water_mask(self, composite: ee.Image, region: ee.Geometry, 
+                              output_path: str) -> bool:
+        """Download Sentinel-1 based water mask."""
+        try:
+            # Use VV polarization for water detection
+            vv_band = composite.select('VV')
+            
+            # Create water mask using threshold (water has low backscatter)
+            water_mask = vv_band.lt(self.config.s1_water_threshold)
+
+            water_mask_url = water_mask.getDownloadURL({
+                'crs': self.config.crs,
+                'region': region.getInfo()['coordinates'],
+                'format': 'GEO_TIFF',
+                'dimensions': self.config.image_dimensions,
+            })
+
+            response = requests.get(water_mask_url, stream=True)
+            response.raise_for_status()
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return True
+        except Exception as e:
+            print(f"    Failed to download S1 water mask: {e}")
             return False
 
     def download_torch_tensor(self, composite: ee.Image, region: ee.Geometry, 
@@ -266,6 +348,84 @@ class SolarPanelMask:
 
         return mask.astype(bool)
 
+class WaterMaskProcessor:
+    """Handles water mask processing from multiple sources."""
+    
+    def __init__(self, config: Config):
+        self.config = config
+    
+    def get_s1_water_mask(self, s1_array: np.ndarray, 
+                         polarization: str = 'VV') -> np.ndarray:
+        """
+        Create water mask from Sentinel-1 SAR data.
+        
+        Args:
+            s1_array: Sentinel-1 image array with shape (H, W, bands) or (H, W)
+            polarization: Polarization to use ('VV' or 'VH')
+            
+        Returns:
+            Binary water mask (1 for water, 0 for non-water)
+        """
+        if s1_array.ndim == 3:
+            # Assume VV is first band, VH is second
+            if polarization == 'VV':
+                sar_band = s1_array[:, :, 0]
+            elif polarization == 'VH':
+                sar_band = s1_array[:, :, 1]
+            else:
+                raise ValueError("Polarization must be 'VV' or 'VH'")
+        else:
+            # Single band array
+            sar_band = s1_array
+        
+        # Convert to dB if not already (check if values are in linear scale)
+        if np.max(sar_band) > 1.0:
+            # Assume linear scale, convert to dB
+            sar_band_db = 10 * np.log10(sar_band + 1e-8)
+        else:
+            # Assume already in dB
+            sar_band_db = sar_band
+        
+        # Create water mask using threshold
+        water_mask = (sar_band_db < self.config.s1_water_threshold).astype(int)
+        
+        return water_mask
+    
+    def combine_water_masks(self, jrc_mask: np.ndarray, 
+                           s1_mask: Optional[np.ndarray] = None,
+                           method: str = 'union') -> np.ndarray:
+        """
+        Combine water masks from different sources.
+        
+        Args:
+            jrc_mask: JRC Global Surface Water mask
+            s1_mask: Sentinel-1 derived water mask
+            method: Combination method ('union', 'intersection', 'jrc_only', 's1_only')
+            
+        Returns:
+            Combined water mask
+        """
+        if s1_mask is None:
+            return jrc_mask
+        
+        # Ensure both masks are binary
+        jrc_binary = (jrc_mask > 0).astype(int)
+        s1_binary = (s1_mask > 0).astype(int)
+        
+        if method == 'union':
+            # Water if detected by either source
+            combined = np.logical_or(jrc_binary, s1_binary).astype(int)
+        elif method == 'intersection':
+            # Water only if detected by both sources
+            combined = np.logical_and(jrc_binary, s1_binary).astype(int)
+        elif method == 'jrc_only':
+            combined = jrc_binary
+        elif method == 's1_only':
+            combined = s1_binary
+        else:
+            raise ValueError(f"Unknown combination method: {method}")
+        
+        return combined
 
 class DataFetcher:
     """Main class for fetching satellite data."""
@@ -273,13 +433,15 @@ class DataFetcher:
     def __init__(self, config: Config = None):
         self.config = config or Config()
         self.processor = SentinelProcessor(self.config)
+        self.water_processor = WaterMaskProcessor(self.config)
         
         if not EarthEngineManager.initialize(self.config.project_id):
             raise RuntimeError("Failed to initialize Google Earth Engine")
 
     def get_annual_composite_data(self, lon: float, lat: float, output_folder: str,
                                 start_year: int, end_year: int, 
-                                image_type: str = 'multispectral_tif') -> List[str]:
+                                image_type: str = 'multispectral_tif',
+                                include_s1: bool = True) -> List[str]:
         """
         Fetches annual median composite images for a single coordinate.
         
@@ -288,6 +450,7 @@ class DataFetcher:
             output_folder: Output directory
             start_year, end_year: Year range
             image_type: Type of image to download
+            include_s1: Whether to download Sentinel-1 data
             
         Returns:
             List of downloaded file paths
@@ -302,33 +465,49 @@ class DataFetcher:
         for year in range(start_year, end_year + 1):
             print(f"  Fetching data for year: {year}")
             
-            composite = self.processor.get_annual_composite(lon, lat, year)
-            if composite is None:
+            # Get Sentinel-2 composite
+            s2_composite = self.processor.get_annual_composite(lon, lat, year)
+            if s2_composite is None:
                 continue
+
+            # Get Sentinel-1 composite if requested
+            s1_composite = None
+            if include_s1:
+                s1_composite = self.processor.get_s1_annual_composite(lon, lat, year)
 
             base_filename = f"{point_name}_{year}"
             success = False
 
             if image_type == 'rgb_png':
                 output_path = os.path.join(output_folder, f"{base_filename}_rgb.png")
-                success = self.processor.download_rgb_png(composite, region, output_path)
+                success = self.processor.download_rgb_png(s2_composite, region, output_path)
                 
             elif image_type == 'multispectral_tif':
                 output_path = os.path.join(output_folder, f"{base_filename}_multispectral.tif")
-                success = self.processor.download_multispectral_tif(composite, region, output_path)
+                success = self.processor.download_multispectral_tif(s2_composite, region, output_path)
                 
                 if success:
                     downloaded_paths.append(output_path)
                     
-                    # Also download water mask
+                    # Download JRC water mask
                     water_path = os.path.join(output_folder, f"{base_filename}_watermask.tif")
                     if self.processor.download_water_mask(region, water_path):
                         downloaded_paths.append(water_path)
+                    
+                    # Download Sentinel-1 data and water mask if available
+                    if s1_composite is not None:
+                        s1_path = os.path.join(output_folder, f"{base_filename}_s1.tif")
+                        if self.processor.download_s1_tif(s1_composite, region, s1_path):
+                            downloaded_paths.append(s1_path)
+                        
+                        s1_water_path = os.path.join(output_folder, f"{base_filename}_s1_watermask.tif")
+                        if self.processor.download_s1_water_mask(s1_composite, region, s1_water_path):
+                            downloaded_paths.append(s1_water_path)
                         
             elif image_type == 'torch_tensor':
                 output_path = os.path.join(output_folder, f"{base_filename}.pt")
                 success = self.processor.download_torch_tensor(
-                    composite, region, output_path, lat, lon, year
+                    s2_composite, region, output_path, lat, lon, year
                 )
             else:
                 raise ValueError(f"Invalid image_type: {image_type}")
@@ -341,7 +520,8 @@ class DataFetcher:
 
     def fetch_images_from_json(self, json_file_path: str, output_base_folder: str = 'fetched_images',
                              image_type: str = 'multispectral_tif', max_workers: int = 5,
-                             start_year: int = 2020, end_year: int = 2024) -> List[Tuple]:
+                             start_year: int = 2020, end_year: int = 2024,
+                             include_s1: bool = True) -> List[Tuple]:
         """
         Fetches images for multiple coordinates from JSON file.
         
@@ -351,6 +531,7 @@ class DataFetcher:
             image_type: Type of images to download
             max_workers: Number of concurrent workers
             start_year, end_year: Year range
+            include_s1: Whether to download Sentinel-1 data
             
         Returns:
             List of (location_dict, result_path) tuples
@@ -369,7 +550,7 @@ class DataFetcher:
                 executor.submit(
                     self.get_annual_composite_data, 
                     loc['lon'], loc['lat'], output_base_folder, 
-                    start_year, end_year, image_type
+                    start_year, end_year, image_type, include_s1
                 ): loc for loc in locations
             }
 
@@ -410,132 +591,176 @@ class Visualizer:
     def __init__(self, config: Config = None):
         self.config = config or Config()
         self.mask_generator = SolarPanelMask(self.config)
+        self.water_processor = WaterMaskProcessor(self.config)
 
     def plot_example(self, locations: List[Dict], years: List[str], 
-                    data_folder: str, output_path: str = 'example_segmentation.pdf'):
+                    data_folder: str, output_path: str = 'example_segmentation.pdf',
+                    water_mask_method: str = 'union'):
         """
-        Plot example segmentation results for multiple locations and years.
-        
-        Args:
-            locations: List of location dictionaries
-            years: List of years to analyze
-            data_folder: Folder containing downloaded data
-            output_path: Output path for the plot
+        For each location, show a single figure with subplots:
+        - RGB
+        - JRC water mask
+        - S1 water mask
+        - Combined water mask
+        - Spectral mask
+        - Final result (RGB with mask overlay)
         """
-        num_images = len(locations)
-        
-        if num_images == 1:
-            # Single location - use full figure
-            fig, ax = plt.subplots(1, 1, figsize=(6.4, 6.4))
-            axes = [ax]
-        else:
-            # Multiple locations - use subplots
-            n_cols = 2
-            n_rows = math.ceil(num_images / n_cols)
-            
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.4, 6.4))
-            if n_rows == 1:
-                axes = [axes] if n_cols == 1 else axes
-            else:
-                axes = axes.flatten()
-
-        for i, loc in enumerate(locations):
-            if i >= len(axes):
-                break
-                
-            ax = axes[i]
+        for loc in locations:
             lat, lon = loc['lat'], loc['lon']
             title = f"Lat: {lat:.4f}, Lon: {lon:.4f}"
-
             try:
-                overlay = self._create_overlay(lat, lon, years, data_folder)
-                if overlay is not None:
-                    ax.imshow(overlay)
-                    # if num_images == 1:
-                        # For single plot, use a larger, more prominent title
-                        # ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
-                    # else:
-                        # ax.set_title(title, fontsize=12)
-                else:
-                    no_data_title = f"{title}\n(No Data)"
-                    if num_images == 1:
-                        ax.set_title(no_data_title, fontsize=16, fontweight='bold', pad=20)
-                    else:
-                        ax.set_title(no_data_title, fontsize=12)
+                yearly_data = {}
+                available_years = []
+                for year in years:
+                    img_path = os.path.join(
+                        data_folder, f"{lat:.4f}_{lon:.4f}_{year}_multispectral.tif"
+                    )
+                    water_path = os.path.join(
+                        data_folder, f"{lat:.4f}_{lon:.4f}_{year}_watermask.tif"
+                    )
+                    s1_water_path = os.path.join(
+                        data_folder, f"{lat:.4f}_{lon:.4f}_{year}_s1_watermask.tif"
+                    )
+                    
+                    if not os.path.exists(img_path):
+                        continue
+                        
+                    img = tifffile.imread(img_path)
+                    if img.shape != (256, 256, 12):
+                        print(f"Unexpected image shape for {year}: {img.shape}")
+                        continue
+                        
+                    # Load masks
+                    jrc_mask = tifffile.imread(water_path) > 0 if os.path.exists(water_path) else np.zeros(img.shape[:2], dtype=bool)
+                    s1_mask = tifffile.imread(s1_water_path) > 0 if os.path.exists(s1_water_path) else np.zeros(img.shape[:2], dtype=bool)
+                    
+                    # Get spectral mask
+                    spectral_mask = self.mask_generator.get_mask(img)
+                    
+                    yearly_data[year] = {
+                        'img': img,
+                        'jrc_mask': jrc_mask,
+                        's1_mask': s1_mask,
+                        'spectral_mask': spectral_mask
+                    }
+                    available_years.append(year)
+                
+                if not available_years:
+                    print(f"No valid images found for {title}")
+                    return
+                
+                print(f"Processing {len(available_years)} years for {title}: {available_years}")
+                
+                # Perform consistency analysis
+                spectral_masks = np.stack([yearly_data[year]['spectral_mask'] for year in available_years])
+                jrc_masks = np.stack([yearly_data[year]['jrc_mask'] for year in available_years])
+                
+                # Calculate consistency metrics
+                spectral_consistency = np.mean(spectral_masks, axis=0)  # Fraction of years with spectral water detection
+                jrc_consistency = np.mean(jrc_masks.astype(float), axis=0)  # Fraction of years with JRC water
+                
+                # Agreement between spectral and JRC masks across years
+                agreement_mask = np.mean(spectral_masks == jrc_masks, axis=0)  # Fraction of years with agreement
+                
+                # Create consensus masks based on consistency thresholds
+                consistent_spectral = spectral_consistency >= 0.5  # Water detected in ≥50% of years
+                consistent_jrc = jrc_consistency >= 0.5  # JRC water in ≥50% of years
+                high_agreement = agreement_mask >= 0.7  # Agreement in ≥70% of years
+                
+                # Use the most recent year for final processing
+                latest_year = years[-1]
+                latest_data = yearly_data[latest_year]
+                
+                # Combine water masks using consistency information
+                # Priority: consistent detections, then recent detections
+                base_water_mask = consistent_spectral & consistent_jrc
+                
+                # Add recent detections where there's high agreement
+                recent_spectral = latest_data['spectral_mask']
+                recent_jrc = latest_data['jrc_mask']
+                recent_agreement = recent_spectral == recent_jrc
+                
+                enhanced_water_mask = base_water_mask | (recent_agreement & (recent_spectral | recent_jrc))
+                
+                # Final masking with S1 from the latest year
+                s1_mask = latest_data['s1_mask']
+                # Combine all masks: (consistent water OR recent agreed water) AND S1 confirmation
+                final_mask = enhanced_water_mask & np.logical_not(s1_mask)
+                # Alternative: Use S1 as validation rather than strict intersection
+                final_mask = enhanced_water_mask & (np.logical_not(s1_mask) & (spectral_consistency > 0.7))
+                # --- Morphological opening to remove single-pixel noise ---
+                # structure = np.ones((3, 3), dtype=bool)
+                # final_mask_clean = scipy.ndimage.binary_closing(final_mask, structure=structure)
+                # labeled_mask, num_features = scipy.ndimage.label(final_mask)
+                # Prepare visualization
+                rgb_display = latest_data['img'][:, :, [3, 2, 1]]
+                rgb_display = np.clip(rgb_display, 0, 0.3) / 0.3
+                
+                # Create overlay
+                overlay = rgb_display.copy()
+                overlay[enhanced_water_mask] = [1.0, 0.0, 0.0]  # Red for final water mask
+                
+                # Plot comprehensive results
+                fig, axs = plt.subplots(2, 5, figsize=(12, 6))
+                
+                # Top row: Individual masks and consistency
+                axs[0,0].imshow(rgb_display)
+                axs[0,0].set_title(f'RGB ({latest_year})')
+                
+                axs[0,1].imshow(spectral_consistency, cmap='Greens', vmin=0, vmax=1)
+                axs[0,1].set_title('Spectral Consistency\n(Fraction of Years)')
+                
+                axs[0,2].imshow(jrc_consistency, cmap='Blues', vmin=0, vmax=1)
+                axs[0,2].set_title('JRC Consistency\n(Fraction of Years)')
+                
+                axs[0,3].imshow(agreement_mask, cmap='Purples', vmin=0, vmax=1)
+                axs[0,3].set_title('Spectral-JRC Agreement\n(Fraction of Years)')
+                
+                axs[0,4].imshow(s1_mask, cmap='Oranges')
+                axs[0,4].set_title(f'S1 Water Mask ({latest_year})')
+                
+                # Bottom row: Processing steps and final result
+                axs[1,0].imshow(consistent_spectral, cmap='Greens')
+                axs[1,0].set_title('Consistent Spectral\n(≥50% years)')
+                
+                axs[1,1].imshow(consistent_jrc, cmap='Blues')
+                axs[1,1].set_title('Consistent JRC\n(≥50% years)')
+                
+                axs[1,2].imshow(enhanced_water_mask, cmap='Purples')
+                axs[1,2].set_title('Enhanced Water Mask\n(Consistent + Recent)')
+                
+                axs[1,3].imshow(final_mask, cmap='Reds')
+                axs[1,3].set_title('Final Mask\n(Enhanced ∩ S1, Cleaned)')
+                
+                axs[1,4].imshow(overlay)
+                axs[1,4].set_title('Final Result Overlay')
+                
+                for ax in axs.flat:
+                    ax.axis('off')
+                
+                # Add colorbar for consistency plots
+                # for i in range(1, 4):
+                #     cbar = plt.colorbar(axs[0,i].images[0], ax=axs[0,i], shrink=0.6)
+                #     cbar.set_label('Fraction')
+                
+                fig.suptitle(f'{title} - Multi-Year Consistency Analysis ({len(available_years)} years)', fontsize=16)
+                plt.tight_layout()
+                plt.show()
+                
+                # Print summary statistics
+                print(f"\nSummary for {title}:")
+                print(f"  Available years: {len(available_years)}")
+                print(f"  Spectral water pixels (consistent): {np.sum(consistent_spectral)}")
+                print(f"  JRC water pixels (consistent): {np.sum(consistent_jrc)}")
+                print(f"  S1 water pixels (latest): {np.sum(s1_mask)}")
+                print(f"  Final water pixels: {np.sum(final_mask)}")
+                print(f"  Agreement rate (spectral-JRC): {np.mean(agreement_mask):.2%}")
+                
             except Exception as e:
                 print(f"Error processing location {lat}, {lon}: {e}")
-                error_title = f"{title}\n(Error)"
-                if num_images == 1:
-                    ax.set_title(error_title, fontsize=16, fontweight='bold', pad=20)
-                else:
-                    ax.set_title(error_title, fontsize=12)
-            
-            ax.axis('off')
-
-        # Hide unused axes (only relevant for multiple locations)
-        if num_images > 1:
-            for j in range(len(locations), len(axes)):
-                fig.delaxes(axes[j])
-
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.show()
-
-    def _create_overlay(self, lat: float, lon: float, years: List[str], 
-                       data_folder: str) -> Optional[np.ndarray]:
-        """Create overlay image with solar panel detection."""
-        yearly_masks = []
-
-        for year in years:
-            img_path = os.path.join(
-                data_folder, f"{lat:.4f}_{lon:.4f}_{year}_multispectral.tif"
-            )
-            water_path = os.path.join(
-                data_folder, f"{lat:.4f}_{lon:.4f}_{year}_watermask.tif"
-            )
-
-            if not os.path.exists(img_path):
+                import traceback
+                traceback.print_exc()
                 continue
-
-            img = tifffile.imread(img_path)
-            if img.shape != (256, 256, 12):
-                print(f"Unexpected image shape: {img.shape}")
-                continue
-
-            # Load water mask
-            if os.path.exists(water_path):
-                water_mask = tifffile.imread(water_path) > 0
-            else:
-                water_mask = np.zeros(img.shape[:2], dtype=bool)
-
-            # Get spectral mask and combine with water mask
-            spectral_mask = self.mask_generator.get_mask(img)
-            combined_mask = spectral_mask & water_mask
-            yearly_masks.append(combined_mask)
-
-        if not yearly_masks:
-            return None
-
-        # Combine yearly masks with consistency threshold
-        mask_stack = np.stack(yearly_masks, axis=0)
-        mask_mean = mask_stack.mean(axis=0)
-        consistent_mask = mask_mean >= 0.1  # Adjust threshold as needed
-
-        # Create RGB overlay
-        latest_img_path = os.path.join(
-            data_folder, f"{lat:.4f}_{lon:.4f}_{years[-1]}_multispectral.tif"
-        )
-        
-        if os.path.exists(latest_img_path):
-            img = tifffile.imread(latest_img_path)
-            rgb_display = img[:, :, [3, 2, 1]]  # RGB bands
-            rgb_display = np.clip(rgb_display, 0, 0.3) / 0.3
-            
-            overlay = rgb_display.copy()
-            overlay[consistent_mask] = [1.0, 0.0, 0.0]  # Red highlight
-            return overlay
-
-        return None
 
 
 # Convenience functions for backward compatibility

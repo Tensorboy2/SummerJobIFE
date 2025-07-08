@@ -12,20 +12,20 @@ def main():
     """Main execution function."""
     # Configuration
     root = os.path.dirname(__file__)
-    coordinates_file = os.path.join(root, 'shark.json')
+    coordinates_file = os.path.join(root, 'coordinates.json')
     output_folder = os.path.join(root, 'downloaded_s2_annual_composites')
     
     # Parameters
-    start_year = 2022  # Sentinel-2 data typically starts mid-2015
-    end_year = 2024    # Up to the current full year
-    analysis_years = ['2022', '2023', '2024']
+    start_year = 2025  # Sentinel-2 data typically starts mid-2015
+    end_year = 2025    # Up to the current full year
+    analysis_years = ['2025']
     
     # Create custom config if needed
     config = Config(
         project_id='summer-job-ife',
         buffer_degrees=0.023,
         cloud_threshold=35.0,
-        water_occurrence_threshold=10.0
+        water_occurrence_threshold=10.0,
     )
     
     # Check if data already exists
@@ -87,10 +87,11 @@ def create_visualization(coordinates_file: str, years: list, data_folder: str):
             locations=locations,
             years=years,
             data_folder=data_folder,
-            output_path='example_segmentation.pdf'
+            output_path='example_segmentation.pdf',
+            water_mask_method='union',
         )
         
-        print("Visualization saved as 'example_segmentation.pdf'")
+        # print("Visualization saved as 'example_segmentation.pdf'")
         
     except Exception as e:
         print(f"Error during visualization: {e}")

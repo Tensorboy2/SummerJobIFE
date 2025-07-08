@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import math
 import time
 from typing import Dict
+import os
 
 @torch.jit.script
 def compute_segmentation_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5) -> Dict[str, float]:
@@ -37,7 +38,11 @@ class SegmentationTrainer:
         self.val_loader = val_loader
         self.device = device
         self.config = config
-        self.path=f"pretrained_{self.config['specific_name']}.pt"
+
+        # Set up output directory for checkpoints and metrics
+        self.output_dir = os.path.join('checkpoints', 'segmentation', self.config['specific_name'])
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.path = os.path.join(self.output_dir, f"pretrained_{self.config['specific_name']}.pt")
 
         self.use_amp = config.get('use_amp', True)
         self.max_grad_norm = config.get('max_grad_norm', 1.0)
@@ -184,5 +189,6 @@ class SegmentationTrainer:
                 # self.save_checkpoint()
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
-        torch.save(self.val_metrics, self.config['specific_name']+'validation_metrics_segmentation.pt')
-        torch.save(self.loss, self.config['specific_name']+'loss_segmentation.pt')
+        # Save metrics and loss in output directory
+        torch.save(self.val_metrics, os.path.join(self.output_dir, f'{self.config["specific_name"]}_validation_metrics_segmentation.pt'))
+        torch.save(self.loss, os.path.join(self.output_dir, f'{self.config["specific_name"]}_loss_segmentation.pt'))

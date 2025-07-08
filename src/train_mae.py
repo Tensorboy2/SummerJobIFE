@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from collections import defaultdict
 import math
 import time
+import os
 
 
 class MAETrainer:
@@ -14,7 +15,11 @@ class MAETrainer:
         self.val_loader = val_loader
         self.device = device
         self.config = config
-        self.path=f"pretrained_encoder_{self.config['specific_name']}.pt"
+
+        # Set up output directory for checkpoints and metrics
+        self.output_dir = os.path.join('checkpoints', 'mae', self.config['specific_name'])
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.path = os.path.join(self.output_dir, f"pretrained_{self.config['specific_name']}.pt")
 
         self.use_amp = config.get('use_amp', True)
         self.max_grad_norm = config.get('max_grad_norm', 1.0)
@@ -140,4 +145,5 @@ class MAETrainer:
                 self.save_encoder_checkpoint()
                 print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
         # torch.save(self.val_metrics,'validation_metrics_mae.pt')
-        torch.save(self.loss,self.config['specific_name']+'loss_mae.pt')
+        
+        torch.save(self.loss, os.path.join(self.output_dir, f'{self.config["specific_name"]}_loss_segmentation.pt'))
