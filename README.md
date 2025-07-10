@@ -24,7 +24,7 @@ conda --version
 
 Fetch the repo:
 ```bash
-git clone https://github.com/Tensorboy2/SummerJobIFE.git
+git clone https://github.com/Tensorboy2/SummerJobIFE.git && cd SummerJobIFE
 ```
 
 

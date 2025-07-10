@@ -93,7 +93,7 @@ def get_dataloaders(config):
         train_dataset,
         batch_size=config['batch_size'],
         shuffle=True,
-        num_workers=config.get('num_workers', 2),  # Default to 2 if not specified
+        num_workers=config.get('num_workers', 6),  # Default to 2 if not specified
         pin_memory=True,
         drop_last=False
     )
@@ -101,7 +101,7 @@ def get_dataloaders(config):
         val_dataset,
         batch_size=config['batch_size'],
         shuffle=False,
-        num_workers=config.get('num_workers', 2),  # Default to 2 if not specified
+        num_workers=config.get('num_workers', 6),  # Default to 2 if not specified
         pin_memory=True,
         drop_last=False
     )
