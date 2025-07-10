@@ -6,7 +6,6 @@
 *.h5
 *.pt
 *.pdf
-*.txt
 *.npy
 __pycache__
 checkpoints/
