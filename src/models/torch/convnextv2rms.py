@@ -45,44 +45,32 @@ class RMSNorm2d(nn.Module):
 
 class ConvNeXtBlock(nn.Module):
     '''
-    ConvNeXt v2 block with depthwise conv + 1x1 conv (pointwise) for channel mixing.
+
+    ConvNeXt v2 block using GRN and RMSNorm.
+
     '''
     def __init__(self, dim, drop_path=0.0, layer_scale_init_value=1e-6):
         super().__init__()
-        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)  # depthwise conv
-        self.norm = RMSNorm(dim, eps=1e-6)  # assuming RMSNorm works on channels-last
-        
-        # Pointwise conv layers for channel expansion and contraction
-        self.pwconv1 = nn.Conv2d(dim, 4 * dim, kernel_size=1)
+        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
+        self.norm = RMSNorm(dim, eps=1e-6)
+        self.pwconv1 = nn.Linear(dim, 4 * dim)
         self.act = nn.GELU()
         self.grn = GRN(4 * dim)
-        self.pwconv2 = nn.Conv2d(4 * dim, dim, kernel_size=1)
-        
-        if layer_scale_init_value > 0:
-            self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
-        else:
-            self.gamma = None
-
-        self.drop_path = nn.Identity()  # placeholder for DropPath or Stochastic Depth
-
+        self.pwconv2 = nn.Linear(4 * dim, dim)
+        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True) if layer_scale_init_value > 0 else None
+        self.drop_path = nn.Identity()
     def forward(self, x):
         shortcut = x
-        
-        x = self.dwconv(x)  # depthwise conv: [B, C, H, W]
-        
-        # RMSNorm expects channels last, so permute
-        x = x.permute(0, 2, 3, 1)  # [B, H, W, C]
+        x = self.dwconv(x)
+        x = x.permute(0, 2, 3, 1)
         x = self.norm(x)
-        x = x.permute(0, 3, 1, 2)  # back to [B, C, H, W]
-        
-        x = self.pwconv1(x)         # [B, 4*C, H, W]
+        x = self.pwconv1(x)
         x = self.act(x)
-        x = self.grn(x)
-        x = self.pwconv2(x)         # [B, C, H, W]
-        
+        x = self.grn(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        x = self.pwconv2(x)
         if self.gamma is not None:
-            x = self.gamma.view(1, -1, 1, 1) * x
-        
+            x = self.gamma * x
+        x = x.permute(0, 3, 1, 2)
         x = shortcut + self.drop_path(x)
         return x
 
@@ -284,13 +272,82 @@ class ConvNeXtV2(ConvNeXtV2Encoder):
         latent, features = super().forward(x)
         return latent
 
-if __name__ == '__main__':
-    x = torch.rand((2, 12, 256, 256))
-    model = ConvNeXtV2MAE(in_chans=12)
-    loss, pred, mask = model(x)
-    print(f"MAE Loss: {loss.item()}, pred shape: {pred.shape}")
+# --- Model creation functions for different sizes (like ViT) ---
+def create_convnextv2_segmentation(size='base', in_chans=3, num_classes=1):
+    """Create a ConvNeXtV2 model for segmentation tasks with different sizes."""
+    configs = {
+        'base': {
+            'depths': [3, 3, 9, 3],
+            'dims': [96, 192, 384, 768],
+            'decoder_dims': [384, 192, 96, 48]
+        },
+        'large': {
+            'depths': [3, 3, 27, 3],
+            'dims': [192, 384, 768, 1536],
+            'decoder_dims': [768, 384, 192, 96]
+        },
+        'small': {
+            'depths': [3, 3, 9, 3],
+            'dims': [64, 128, 256, 512],
+            'decoder_dims': [256, 128, 64, 32]
+        }
+    }
+    if size not in configs:
+        raise ValueError(f"Unsupported ConvNeXtV2 size: {size}. Choose from {list(configs.keys())}")
+    cfg = configs[size]
+    return ConvNeXtV2Segmentation(
+        in_chans=in_chans,
+        num_classes=num_classes,
+        depths=cfg['depths'],
+        dims=cfg['dims'],
+        decoder_dims=cfg['decoder_dims']
+    )
 
+def create_convnextv2_mae(size='base', in_chans=12, mask_ratio=0.75):
+    """Create a ConvNeXtV2 model for MAE pretraining with different sizes."""
+    configs = {
+        'base': {
+            'depths': [3, 3, 9, 3],
+            'dims': [96, 192, 384, 768],
+            'decoder_dims': [512, 256, 128, 64]
+        },
+        'large': {
+            'depths': [3, 3, 27, 3],
+            'dims': [192, 384, 768, 1536],
+            'decoder_dims': [1024, 512, 256, 128]
+        },
+        'small': {
+            'depths': [3, 3, 9, 3],
+            'dims': [64, 128, 256, 512],
+            'decoder_dims': [256, 128, 64, 32]
+        }
+    }
+    if size not in configs:
+        raise ValueError(f"Unsupported ConvNeXtV2 size: {size}. Choose from {list(configs.keys())}")
+    cfg = configs[size]
+    return ConvNeXtV2MAE(
+        in_chans=in_chans,
+        depths=cfg['depths'],
+        dims=cfg['dims'],
+        decoder_dims=cfg['decoder_dims'],
+        mask_ratio=mask_ratio
+    )
+
+if __name__ == '__main__':
+    # Test MAE model creation functions
+    print("Testing ConvNeXtV2 MAE Model Creation:")
+    x = torch.rand((2, 12, 256, 256))
+    for size in ['small', 'base', 'large']:
+        print(f"\nSize: {size}")
+        model = create_convnextv2_mae(size=size, in_chans=12)
+        loss, pred, mask = model(x)
+        print(f"MAE Loss: {loss.item():.4f}, pred shape: {pred.shape}, mask shape: {mask.shape}")
+
+    # Test segmentation model creation functions
+    print("\nTesting ConvNeXtV2 Segmentation Model Creation:")
     x_seg = torch.rand((2, 3, 256, 256))
-    seg_model = ConvNeXtV2Segmentation(in_chans=3, num_classes=1)
-    seg_output = seg_model(x_seg)
-    print(f"Segmentation output shape: {seg_output.shape}")
+    for size in ['small', 'base', 'large']:
+        print(f"\nSize: {size}")
+        seg_model = create_convnextv2_segmentation(size=size, in_chans=3, num_classes=1)
+        seg_output = seg_model(x_seg)
+        print(f"Segmentation output shape: {seg_output.shape}")

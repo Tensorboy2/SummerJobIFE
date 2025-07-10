@@ -757,41 +757,41 @@ class Visualizer:
                 print(f"  Final water pixels: {np.sum(final_mask)}")
                 print(f"  Agreement rate (spectral-JRC): {np.mean(agreement_mask):.2%}")
                 
-                # --- CLEAN MASKING LOGIC FOR SOLAR PANELS ON WATER ---
-                # 1. Multi-year water mask: pixel is water if JRC or S1 says so in >=50% of years
-                water_union = np.logical_or(jrc_masks, s1_mask)  # shape: (years, H, W)
-                water_consistent = np.mean(water_union, axis=0) >= 0.5
+                # # --- CLEAN MASKING LOGIC FOR SOLAR PANELS ON WATER ---
+                # # 1. Multi-year water mask: pixel is water if JRC or S1 says so in >=50% of years
+                # water_union = np.logical_or(jrc_masks, s1_mask)  # shape: (years, H, W)
+                # water_consistent = np.mean(water_union, axis=0) >= 0.5
 
-                # 2. Multi-year spectral mask: pixel is solar panel if detected in >=50% of years
-                spectral_consistent = np.mean(spectral_masks, axis=0) >= 0.5
+                # # 2. Multi-year spectral mask: pixel is solar panel if detected in >=50% of years
+                # spectral_consistent = np.mean(spectral_masks, axis=0) >= 0.5
 
-                # 3. Final mask: solar panel AND water (both consistent)
-                mask_on_water = spectral_consistent & water_consistent
+                # # 3. Final mask: solar panel AND water (both consistent)
+                # mask_on_water = spectral_consistent & water_consistent
 
-                # 4. Morphological cleaning (remove small blobs/noise)
-                structure = np.ones((3, 3), dtype=bool)
-                mask_on_water_clean = scipy.ndimage.binary_opening(mask_on_water, structure=structure)
-                mask_on_water_clean = scipy.ndimage.binary_closing(mask_on_water_clean, structure=structure)
+                # # 4. Morphological cleaning (remove small blobs/noise)
+                # structure = np.ones((3, 3), dtype=bool)
+                # mask_on_water_clean = scipy.ndimage.binary_opening(mask_on_water, structure=structure)
+                # mask_on_water_clean = scipy.ndimage.binary_closing(mask_on_water_clean, structure=structure)
 
-                # 5. Visualization
-                rgb_display = latest_data['img'][:, :, [3, 2, 1]]
-                rgb_display = np.clip(rgb_display, 0, 0.3) / 0.3
-                overlay = rgb_display.copy()
-                overlay[mask_on_water_clean] = [1.0, 0.0, 0.0]
+                # # 5. Visualization
+                # rgb_display = latest_data['img'][:, :, [3, 2, 1]]
+                # rgb_display = np.clip(rgb_display, 0, 0.3) / 0.3
+                # overlay = rgb_display.copy()
+                # overlay[mask_on_water_clean] = [1.0, 0.0, 0.0]
 
-                fig, axs = plt.subplots(1, 4, figsize=(16, 4))
-                axs[0].imshow(rgb_display)
-                axs[0].set_title(f'RGB ({latest_year})')
-                axs[1].imshow(water_consistent, cmap='Blues')
-                axs[1].set_title('Consistent Water Mask')
-                axs[2].imshow(spectral_consistent, cmap='Greens')
-                axs[2].set_title('Consistent Spectral Mask')
-                axs[3].imshow(overlay)
-                axs[3].set_title('Solar Panels on Water')
-                for ax in axs:
-                    ax.axis('off')
-                plt.tight_layout()
-                plt.show()
+                # fig, axs = plt.subplots(1, 4, figsize=(16, 4))
+                # axs[0].imshow(rgb_display)
+                # axs[0].set_title(f'RGB ({latest_year})')
+                # axs[1].imshow(water_consistent, cmap='Blues')
+                # axs[1].set_title('Consistent Water Mask')
+                # axs[2].imshow(spectral_consistent, cmap='Greens')
+                # axs[2].set_title('Consistent Spectral Mask')
+                # axs[3].imshow(overlay)
+                # axs[3].set_title('Solar Panels on Water')
+                # for ax in axs:
+                #     ax.axis('off')
+                # plt.tight_layout()
+                # plt.show()
 
                 # Print summary
                 print(f"\nSummary for {title} (CLEANED):")

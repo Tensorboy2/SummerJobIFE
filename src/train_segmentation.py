@@ -86,7 +86,7 @@ class SegmentationTrainer:
         img = img.to(self.device, non_blocking=True)
         mask = mask.to(self.device, non_blocking=True)
 
-        context = autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp) \
+        context = autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp) \
             if self.use_amp else nullcontext()
         with context:
             pred = self.model(img)
@@ -192,3 +192,41 @@ class SegmentationTrainer:
         # Save metrics and loss in output directory
         torch.save(self.val_metrics, os.path.join(self.output_dir, f'{self.config["specific_name"]}_validation_metrics_segmentation.pt'))
         torch.save(self.loss, os.path.join(self.output_dir, f'{self.config["specific_name"]}_loss_segmentation.pt'))
+
+
+if __name__ == "__main__":
+    print("\nTesting SegmentationTrainer with ViT and ConvNeXtV2 segmentation models:")
+    from torch.utils.data import DataLoader, TensorDataset
+    from models.torch.vit import create_vit_segmentation
+    from models.torch.convnextv2rms import create_convnextv2_segmentation
+
+    # Dummy dataset: 10 samples, 12 channels, 256x256, and binary masks
+    dummy_imgs = torch.randn(4, 12, 256, 256)
+    dummy_masks = (torch.rand(4, 1, 256, 256) > 0.5).float()
+    dummy_loader = DataLoader(TensorDataset(dummy_imgs, dummy_masks), batch_size=2)
+
+    # Minimal config
+    config = {
+        'specific_name': 'test',
+        'lr': 1e-4,
+        'num_epochs': 1,
+        'compile': False
+    }
+    device = torch.device('cpu')
+
+    # Import SegmentationTrainer explicitly (fix NameError)
+    from __main__ import SegmentationTrainer
+
+    # Test ViT Segmentation with SegmentationTrainer
+    print("\n--- ViT Segmentation Trainer ---")
+    vit_seg = create_vit_segmentation(size='base', in_channels=12, num_classes=1, patch_size=16)
+    trainer_vit = SegmentationTrainer(vit_seg, dummy_loader, dummy_loader, device, config)
+    trainer_vit.train_epoch(1)
+    trainer_vit.validate(1)
+
+    # Test ConvNeXtV2 Segmentation with SegmentationTrainer
+    print("\n--- ConvNeXtV2 Segmentation Trainer ---")
+    convnext_seg = create_convnextv2_segmentation(size='base', in_chans=12, num_classes=1)
+    trainer_convnext = SegmentationTrainer(convnext_seg, dummy_loader, dummy_loader, device, config)
+    trainer_convnext.train_epoch(1)
+    trainer_convnext.validate(1)

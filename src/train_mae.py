@@ -57,9 +57,12 @@ class MAETrainer:
         return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
     def _step(self, img, training=True):
+        # Unpack if batch is a tuple/list (e.g., from TensorDataset)
+        if isinstance(img, (tuple, list)):
+            img = img[0]
         img = img.to(self.device, non_blocking=True)
 
-        context = autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp) \
+        context = autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp) \
             if self.use_amp else nullcontext()
         with context:
             loss, _, _ = self.model(img)
@@ -147,3 +150,56 @@ class MAETrainer:
         # torch.save(self.val_metrics,'validation_metrics_mae.pt')
         
         torch.save(self.loss, os.path.join(self.output_dir, f'{self.config["specific_name"]}_loss_segmentation.pt'))
+
+
+if __name__ == "__main__":
+    print("\nTesting MAETrainer with ViT MAE and ConvNeXtV2 MAE:")
+    from torch.utils.data import DataLoader, TensorDataset
+    from models.torch.vit import create_vit_mae
+    from models.torch.convnextv2rms import create_convnextv2_mae
+
+    # Dummy dataset: 10 samples, 12 channels, 256x256
+    dummy_data = torch.randn(10, 12, 256, 256)
+    dummy_loader = DataLoader(TensorDataset(dummy_data), batch_size=2)
+
+    # Minimal config
+    config = {
+        'specific_name': 'test',
+        'lr': 1e-4,
+        'num_epochs': 1,
+        'compile': False
+    }
+    device = torch.device('cpu')
+
+    # Test ViT MAE with MAETrainer
+    print("\n--- ViT MAE Trainer ---")
+    vit_mae = create_vit_mae(size='base', in_channels=12, patch_size=16, mask_ratio=0.75)
+    trainer_vit = MAETrainer(vit_mae, dummy_loader, dummy_loader, device, config)
+    trainer_vit.train_epoch(1)
+    trainer_vit.validate(1)
+
+    # Test ConvNeXtV2 MAE with MAETrainer
+    print("\n--- ConvNeXtV2 MAE Trainer ---")
+    convnext_mae = create_convnextv2_mae(size='base', in_chans=12, mask_ratio=0.75)
+    trainer_convnext = MAETrainer(convnext_mae, dummy_loader, dummy_loader, device, config)
+    trainer_convnext.train_epoch(1)
+    trainer_convnext.validate(1)
+    
+    # Example test logic for ViT MAE and ConvNeXtV2 MAE
+    print("\nTesting ViT MAE and ConvNeXtV2 MAE forward pass:")
+    from models.torch.vit import create_vit_mae
+    from models.torch.convnextv2rms import create_convnextv2_mae
+
+    # Dummy input
+    x = torch.randn(2, 12, 256, 256)
+
+    # Test ViT MAE
+    vit_mae = create_vit_mae(size='base', in_channels=12, patch_size=16, mask_ratio=0.75)
+    vit_loss, vit_pred, vit_mask = vit_mae(x)
+    print(f"ViT MAE: loss={vit_loss.item():.4f}, pred shape={vit_pred.shape}, mask shape={vit_mask.shape}")
+
+    # Test ConvNeXtV2 MAE
+    convnext_mae = create_convnextv2_mae(size='base', in_chans=12, mask_ratio=0.75)
+    convnext_loss, convnext_pred, convnext_mask = convnext_mae(x)
+    print(f"ConvNeXtV2 MAE: loss={convnext_loss.item():.4f}, pred shape={convnext_pred.shape}, mask shape={convnext_mask.shape}")
+    
