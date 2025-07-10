@@ -171,23 +171,18 @@ class SegmentationTrainer:
 
     def save_checkpoint(self, epoch=None, is_best=False):
         """
-        Save full model and optimizer state. Optionally include epoch and best flag in filename.
+        Save only the best model weights (state_dict).
         """
-        fname = f"checkpoint_{self.config['specific_name']}"
-        if epoch is not None:
-            fname += f"_epoch{epoch}"
         if is_best:
-            fname += "_best"
-        fname += ".pt"
-        path = os.path.join(self.output_dir, fname)
-        checkpoint = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'epoch': epoch,
-            'config': self.config
-        }
-        torch.save(checkpoint, path)
-        return path
+            checkpoint = {
+                'model_state_dict': self.model.state_dict(),
+                'epoch': epoch,
+                'config': self.config
+            }
+            fname = f"best_model_{self.config['specific_name']}.pt"
+            path = os.path.join(self.output_dir, fname)
+            torch.save(checkpoint, path)
+            return path
 
     def save_encoder_checkpoint(self, epoch=None, is_best=False):
         """
@@ -223,11 +218,9 @@ class SegmentationTrainer:
             self.train_epoch(epoch)
             self.validate(epoch)
             val_loss = self.loss['val'][epoch-1]
-            # Save checkpoint and encoder every epoch
-            self.save_checkpoint(epoch=epoch, is_best=False)
-            self.save_encoder_checkpoint(epoch=epoch, is_best=False)
             # Save metrics after each epoch
             torch.save({'loss': self.loss, 'val_metrics': self.val_metrics}, metrics_path)
+            # Only save best model weights
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_epoch = epoch

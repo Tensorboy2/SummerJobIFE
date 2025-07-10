@@ -144,20 +144,15 @@ class MAETrainer:
         print(f"\n[Validation Epoch {epoch}] Loss: {avg_loss:.4f}, Epoch time: {tot_time:.2f}\n")
 
     def save_checkpoint(self, epoch=None, is_best=False):
-        """Save full model/optimizer state dict, with descriptive filename."""
-        checkpoint = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'epoch': epoch,
-            'config': self.config
-        }
-        fname = f"model_{self.exp_name}"
-        if epoch is not None:
-            fname += f"_epoch{epoch}"
+        """Save only the best model weights (state_dict)."""
         if is_best:
-            fname += "_best"
-        fname += ".pt"
-        torch.save(checkpoint, os.path.join(self.output_dir, fname))
+            checkpoint = {
+                'model_state_dict': self.model.state_dict(),
+                'epoch': epoch,
+                'config': self.config
+            }
+            fname = f"best_model_{self.exp_name}.pt"
+            torch.save(checkpoint, os.path.join(self.output_dir, fname))
 
     def save_encoder_checkpoint(self, epoch=None, is_best=False):
         """Save only encoder weights, with descriptive filename."""
@@ -186,9 +181,7 @@ class MAETrainer:
             metrics_path = os.path.join(self.output_dir, f"metrics_epoch{epoch}.json")
             with open(metrics_path, 'w') as f:
                 json.dump({"train_loss": self.loss['train'], "val_loss": self.loss['val']}, f, indent=2)
-            # Save checkpoint for this epoch
-            self.save_checkpoint(epoch=epoch, is_best=False)
-            self.save_encoder_checkpoint(epoch=epoch, is_best=False)
+            # Only save best model weights
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_epoch = epoch
