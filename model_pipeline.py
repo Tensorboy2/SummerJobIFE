@@ -24,7 +24,7 @@ def run_mae_trainers():
             print(f"\n=== Pretraining {model_name.upper()} MAE ({size}) ===")
             config = {
                 'val_ratio': 0.2,
-                'batch_size': 128,
+                'batch_size': 32,
                 'data_type': 'mae',
                 'lr': 0.0001,
                 'weight_decay': 0.1,
@@ -41,7 +41,7 @@ def run_mae_trainers():
             kwargs = dict(extra_kwargs)
             kwargs["size"] = size
             model = create_fn(**kwargs).to(device=device)
-            print(f"Model on device: {device}")
+            print(f"Model on device: {model.device}")
             train_loader, val_loader = get_dataloaders(config=config)
             trainer = MAETrainer(model=model,
                                 train_loader=train_loader,
