@@ -29,9 +29,9 @@ class MaskedAutoEncoderDataset(Dataset):
 
     def __getitem__(self, idx):
         path = os.path.join(self.image_folder, self.files[idx])
-        img = np.load(path)  # [H, W, C], float32
+        img = np.load(path,mmap_mode='r')  # [H, W, C], float32
 
-        img = torch.from_numpy(img).permute(2, 0, 1) / 15.0  # Normalize and reshape to [C, H, W]
+        img = torch.from_numpy(img.copy()).permute(2, 0, 1) / 15.0  # Normalize and reshape to [C, H, W]
 
         if self.transform:
             img = self.transform(img)
@@ -57,11 +57,11 @@ class SegmentationDataset(Dataset):
         img_path = os.path.join(self.image_folder, name)
         mask_path = os.path.join(self.mask_folder, name)
 
-        img = np.load(img_path)       # [H, W, C], float32
-        mask = np.load(mask_path)     # [1, H, W] or [H, W]
+        img = np.load(img_path,mmap_mode='r')       # [H, W, C], float32
+        mask = np.load(mask_path,mmap_mode='r')     # [1, H, W] or [H, W]
 
-        img = torch.from_numpy(img).permute(2, 0, 1) / 15.0  # Normalize and reshape
-        mask = torch.from_numpy(mask)  # No need to permute if already [1, H, W]
+        img = torch.from_numpy(img.copy()).permute(2, 0, 1) / 15.0  # Normalize and reshape
+        mask = torch.from_numpy(mask.copy())  # No need to permute if already [1, H, W]
 
         if self.transform:
             img = self.transform(img)

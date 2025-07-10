@@ -1,115 +1,128 @@
-import torch.optim as op
 from src.custom_dataset import get_dataloaders
-# from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
-from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+from src.models.torch.convnextv2rms import create_convnextv2_mae, create_convnextv2_segmentation
+from src.models.torch.vit import create_vit_mae, create_vit_segmentation
 from src.train_mae import MAETrainer
 from src.train_segmentation import SegmentationTrainer
 import torch
+import os
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 # ==== Pretrain model ====
-def pretrain():
-    '''
-    Pretrain ConvNeXt v2 using fully convolutional masked auto encoder.
-    On full images from Yang dataset. (all years)
-    '''
-    print(f'Started pre-training...')
-    print(f'Using {device}...')
 
-    config = {
-        'val_ratio':0.2,
-        'batch_size':2,
-        'data_type':'mae',
-        'lr':0.0001,
-        'weight_decay':0.1,
-        'num_epochs':100,
-        'decay': 'cosine',
-        'warmup_steps': 500,
-        'use_amp': True,
-        'compile': True,
-        'max_grad_norm': 1.0,
-        'specific_name':'convnextv2',
-    }
-    model = ConvNeXtV2MAE(mask_ratio=0.6).to(device=device)
-    train_loader, val_loader = get_dataloaders(config=config)
-    trainer = MAETrainer(model=model,
-               train_loader=train_loader,
-               val_loader=val_loader,
-               device=device,
-               config=config)
-    trainer.train()
-    return 0
+def run_mae_trainers():
+    """
+    Run MAE training for all model sizes and types (ViT, ConvNeXtV2).
+    """
+    mae_model_types = [
+        ("vit", create_vit_mae, {"in_channels": 12, "patch_size": 16, "mask_ratio": 0.75}),
+        ("convnextv2", create_convnextv2_mae, {"in_chans": 12, "mask_ratio": 0.75}),
+    ]
+    sizes = ["large", "small", "base"]
+    for model_name, create_fn, extra_kwargs in mae_model_types:
+        for size in sizes:
+            print(f"\n=== Pretraining {model_name.upper()} MAE ({size}) ===")
+            config = {
+                'val_ratio': 0.2,
+                'batch_size': 32,
+                'data_type': 'mae',
+                'lr': 0.0001,
+                'weight_decay': 0.1,
+                'num_epochs': 100,
+                'decay': 'cosine',
+                'warmup_steps': 500,
+                'use_amp': True,
+                'compile': True,
+                'max_grad_norm': 1.0,
+                'specific_name': f'{model_name}_mae_{size}',
+                'size': size,
+            }
+            # Merge size into kwargs
+            kwargs = dict(extra_kwargs)
+            kwargs["size"] = size
+            model = create_fn(**kwargs).to(device=device)
+            train_loader, val_loader = get_dataloaders(config=config)
+            trainer = MAETrainer(model=model,
+                                train_loader=train_loader,
+                                val_loader=val_loader,
+                                device=device,
+                                config=config)
+            trainer.train()
+
+def run_segmentation_trainers():
+    """
+    Run segmentation training for all model sizes and types (ViT, ConvNeXtV2).
+    """
+    seg_model_types = [
+        ("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
+        ("convnextv2", create_convnextv2_segmentation, {"in_chans": 12, "num_classes": 1}),
+    ]
+    sizes = ["large", "small", "base"]
+    for model_name, create_fn, extra_kwargs in seg_model_types:
+        for size in sizes:
+            print(f"\n=== Segmentation Training {model_name.upper()} ({size}) ===")
+            config = {
+                'val_ratio': 0.2,
+                'batch_size': 32,
+                'data_type': 'segmentation',
+                'lr': 0.0001,
+                'weight_decay': 0.1,
+                'num_epochs': 100,
+                'decay': 'cosine',
+                'warmup_steps': 500,
+                'use_amp': True,
+                'compile': True,
+                'max_grad_norm': 1.0,
+                'specific_name': f'{model_name}_seg_{size}',
+                'size': size,
+            }
+            kwargs = dict(extra_kwargs)
+            kwargs["size"] = size
+            model = create_fn(**kwargs).to(device=device)
+            # Optionally load encoder weights for segmentation (if available)
+            encoder_ckpt_path = os.path.join('checkpoints', model_name, f'{model_name}_mae_{size}', f'encoder_{model_name}_mae_{size}_best.pt')
+            if os.path.exists(encoder_ckpt_path):
+                ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
+                model.encoder.load_state_dict(ckpt['encoder'], strict=True)
+                print(f"Loaded pretrained encoder from: {encoder_ckpt_path}")
+            else:
+                print(f"No pretrained encoder found for {model_name} {size}, training from scratch.")
+            train_loader, val_loader = get_dataloaders(config=config)
+            trainer = SegmentationTrainer(model=model,
+                                         train_loader=train_loader,
+                                         val_loader=val_loader,
+                                         device=device,
+                                         config=config)
+            trainer.train()
 
 # ==== Segmentation-train on  ====
-def segmentation_train():
-    '''
-    Train ConvNeXt v2 on segmentation data using metrics such as:
-    - dice
-    - iou
 
-    Masks are part of the Yang dataset.
-    '''
-    print(f'Started segmentation-training...')
-    config = {
-        'val_ratio':0.2,
-        'batch_size':32,
-        'data_type':'segmentation',
-        'lr':0.0001,
-        'weight_decay':0.1,
-        'num_epochs':100,
-        'decay': 'cosine',
-        'warmup_steps': 500,
-        'use_amp': True,
-        'compile': True,
-        'max_grad_norm': 1.0,
-        'specific_name':'convnextv2',
-    }
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
-    encoder_ckpt_path = "pretrained_encoder_convnextv2.pt"
-    ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
-    model.encoder.load_state_dict(ckpt['encoder'], strict=True)
-    print("Loaded pretrained encoder from:", encoder_ckpt_path)
-
-    train_loader, val_loader = get_dataloaders(config=config)
-
-    trainer = SegmentationTrainer(model=model,
-                                 train_loader=train_loader,
-                                 val_loader=val_loader,
-                                 device=device,
-                                 config=config)
-    trainer.train()
-
-    return 0
 
 
 # ==== Fine tune on FPV ====
+
 def finetune():
-    '''
-    Must create samples of FPV systems based on mask from Xia or dataset from Xia.
-    These samples are used to fine tuned the model for FPVs.
-    '''
     print(f'Started segmentation fine tuning...')
+    # Implement as needed for your FPV fine-tuning scenario
+    pass
 
-    config = {
-        'val_ratio':0.2,
-        'batch_size':32,
-        'data_type':'segmentation',
-        'lr':1e-4,
-        'weight_decay':0.5,
-        'num_epochs':100,
-        'decay': 'cosine',
-        'warmup_steps': 1000,
-        'use_amp': True,
-        'compile': True,
-        'max_grad_norm': 1.0,
-    }
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
-    train_loader, val_loader = get_dataloaders(config=config)
-    return 0
 
+import argparse
+
+def main():
+    parser = argparse.ArgumentParser(description="Model pipeline runner")
+    parser.add_argument('--task', type=str, required=True, choices=['mae', 'segmentation', 'finetune'],
+                        help='Which task to run: mae, segmentation, finetune')
+    args = parser.parse_args()
+
+    if args.task == 'mae':
+        run_mae_trainers()
+    elif args.task == 'segmentation':
+        run_segmentation_trainers()
+    elif args.task == 'finetune':
+        finetune()
+    else:
+        print(f"Unknown task: {args.task}")
 
 if __name__ == '__main__':
-    pretrain()
-    segmentation_train()
-    finetune()
+    main()

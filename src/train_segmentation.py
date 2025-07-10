@@ -36,7 +36,12 @@ class SegmentationTrainer:
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.device = device
+        if device == 'string':
+            # If device is a string, convert to torch.device
+            self.device = torch.device(device)
+        else:
+            self.device = device
+        
         self.config = config
 
         # Set up output directory for checkpoints and metrics
@@ -86,7 +91,7 @@ class SegmentationTrainer:
         img = img.to(self.device, non_blocking=True)
         mask = mask.to(self.device, non_blocking=True)
 
-        context = autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp) \
+        context = autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp) \
             if self.use_amp else nullcontext()
         with context:
             pred = self.model(img)
@@ -164,34 +169,84 @@ class SegmentationTrainer:
         print(f"Metrics - Precision: {epoch_metrics['precision']:.4f}, Recall: {epoch_metrics['recall']:.4f}, "
               f"Dice: {epoch_metrics['dice']:.4f}, IoU: {epoch_metrics['iou']:.4f}\n")
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, epoch=None, is_best=False):
+        """
+        Save full model and optimizer state. Optionally include epoch and best flag in filename.
+        """
+        fname = f"checkpoint_{self.config['specific_name']}"
+        if epoch is not None:
+            fname += f"_epoch{epoch}"
+        if is_best:
+            fname += "_best"
+        fname += ".pt"
+        path = os.path.join(self.output_dir, fname)
         checkpoint = {
             'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict()
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'epoch': epoch,
+            'config': self.config
         }
-        torch.save(checkpoint, self.path)
+        torch.save(checkpoint, path)
+        return path
 
-    def save_encoder_checkpoint(self):
+    def save_encoder_checkpoint(self, epoch=None, is_best=False):
+        """
+        Save encoder and decoder weights. Optionally include epoch and best flag in filename.
+        """
+        fname = f"encoder_{self.config['specific_name']}"
+        if epoch is not None:
+            fname += f"_epoch{epoch}"
+        if is_best:
+            fname += "_best"
+        fname += ".pt"
+        path = os.path.join(self.output_dir, fname)
         checkpoint = {
             'encoder': self.model.encoder.state_dict(),
-            'decoder': self.model.decoder.state_dict()
+            'decoder': self.model.decoder.state_dict(),
+            'epoch': epoch,
+            'config': self.config
         }
-        torch.save(checkpoint, self.path)
+        torch.save(checkpoint, path)
+        return path
 
     def train(self):
+        import json
         best_loss = float('inf')
+        best_epoch = None
+        metrics_path = os.path.join(self.output_dir, f'{self.config["specific_name"]}_metrics.pt')
+        config_path = os.path.join(self.output_dir, 'config.json')
+        # Save config for reproducibility
+        with open(config_path, 'w') as f:
+            json.dump(self.config, f, indent=2)
+
         for epoch in range(1, self.config["num_epochs"] + 1):
             self.train_epoch(epoch)
             self.validate(epoch)
             val_loss = self.loss['val'][epoch-1]
+            # Save checkpoint and encoder every epoch
+            self.save_checkpoint(epoch=epoch, is_best=False)
+            self.save_encoder_checkpoint(epoch=epoch, is_best=False)
+            # Save metrics after each epoch
+            torch.save({'loss': self.loss, 'val_metrics': self.val_metrics}, metrics_path)
             if val_loss < best_loss:
                 best_loss = val_loss
-                # self.save_checkpoint()
-                self.save_encoder_checkpoint()
-                print(f"\nNew best model saved! Loss: {best_loss:.4f}\n")
-        # Save metrics and loss in output directory
-        torch.save(self.val_metrics, os.path.join(self.output_dir, f'{self.config["specific_name"]}_validation_metrics_segmentation.pt'))
-        torch.save(self.loss, os.path.join(self.output_dir, f'{self.config["specific_name"]}_loss_segmentation.pt'))
+                best_epoch = epoch
+                best_ckpt = self.save_checkpoint(epoch=epoch, is_best=True)
+                best_encoder = self.save_encoder_checkpoint(epoch=epoch, is_best=True)
+                print(f"\nNew best model saved! Loss: {best_loss:.4f} (epoch {epoch})\nSaved: {best_ckpt}\nEncoder: {best_encoder}\n")
+
+        # Save final summary
+        summary = {
+            'best_loss': best_loss,
+            'best_epoch': best_epoch,
+            'metrics': self.loss,
+            'val_metrics': self.val_metrics,
+            'config': self.config
+        }
+        summary_path = os.path.join(self.output_dir, f'{self.config["specific_name"]}_summary.json')
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        print(f"\nTraining complete. Best loss: {best_loss:.4f} (epoch {best_epoch})\nSummary saved to {summary_path}\n")
 
 
 if __name__ == "__main__":
@@ -203,7 +258,7 @@ if __name__ == "__main__":
     # Dummy dataset: 10 samples, 12 channels, 256x256, and binary masks
     dummy_imgs = torch.randn(4, 12, 256, 256)
     dummy_masks = (torch.rand(4, 1, 256, 256) > 0.5).float()
-    dummy_loader = DataLoader(TensorDataset(dummy_imgs, dummy_masks), batch_size=2)
+    dummy_loader = DataLoader(TensorDataset(dummy_imgs, dummy_masks), batch_size=1)
 
     # Minimal config
     config = {
