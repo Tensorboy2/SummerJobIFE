@@ -41,6 +41,7 @@ def run_mae_trainers():
             kwargs = dict(extra_kwargs)
             kwargs["size"] = size
             model = create_fn(**kwargs).to(device=device)
+            print(f"Model on device: {device}")
             train_loader, val_loader = get_dataloaders(config=config)
             trainer = MAETrainer(model=model,
                                 train_loader=train_loader,
