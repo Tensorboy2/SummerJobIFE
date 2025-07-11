@@ -144,30 +144,28 @@ class MAETrainer:
         print(f"\n[Validation Epoch {epoch}] Loss: {avg_loss:.4f}, Epoch time: {tot_time:.2f}\n")
 
     def save_checkpoint(self, epoch=None, is_best=False):
-        """Save only the best model weights (state_dict)."""
+        """Save only the best model weights (state_dict), overwriting previous best for this experiment."""
         if is_best:
             checkpoint = {
                 'model_state_dict': self.model.state_dict(),
                 'epoch': epoch,
                 'config': self.config
             }
+            # Overwrite the same file for each experiment/model name
             fname = f"best_model_{self.exp_name}.pt"
             torch.save(checkpoint, os.path.join(self.output_dir, fname))
 
     def save_encoder_checkpoint(self, epoch=None, is_best=False):
-        """Save only encoder weights, with descriptive filename."""
-        checkpoint = {
-            'encoder': self.model.encoder.state_dict(),
-            'epoch': epoch,
-            'config': self.config
-        }
-        fname = f"encoder_{self.exp_name}"
-        if epoch is not None:
-            fname += f"_epoch{epoch}"
+        """Save only encoder weights, overwriting previous best for this experiment."""
         if is_best:
-            fname += "_best"
-        fname += ".pt"
-        torch.save(checkpoint, os.path.join(self.output_dir, fname))
+            checkpoint = {
+                'encoder': self.model.encoder.state_dict(),
+                'epoch': epoch,
+                'config': self.config
+            }
+            # Overwrite the same file for each experiment/model name
+            fname = f"encoder_{self.exp_name}_best.pt"
+            torch.save(checkpoint, os.path.join(self.output_dir, fname))
 
     def train(self):
         import json

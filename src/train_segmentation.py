@@ -171,7 +171,7 @@ class SegmentationTrainer:
 
     def save_checkpoint(self, epoch=None, is_best=False):
         """
-        Save only the best model weights (state_dict).
+        Save only the best model weights (state_dict), overwriting previous best for this experiment.
         """
         if is_best:
             checkpoint = {
@@ -186,23 +186,19 @@ class SegmentationTrainer:
 
     def save_encoder_checkpoint(self, epoch=None, is_best=False):
         """
-        Save encoder and decoder weights. Optionally include epoch and best flag in filename.
+        Save encoder and decoder weights, overwriting previous best for this experiment.
         """
-        fname = f"encoder_{self.config['specific_name']}"
-        if epoch is not None:
-            fname += f"_epoch{epoch}"
         if is_best:
-            fname += "_best"
-        fname += ".pt"
-        path = os.path.join(self.output_dir, fname)
-        checkpoint = {
-            'encoder': self.model.encoder.state_dict(),
-            'decoder': self.model.decoder.state_dict(),
-            'epoch': epoch,
-            'config': self.config
-        }
-        torch.save(checkpoint, path)
-        return path
+            fname = f"encoder_{self.config['specific_name']}_best.pt"
+            path = os.path.join(self.output_dir, fname)
+            checkpoint = {
+                'encoder': self.model.encoder.state_dict(),
+                'decoder': self.model.decoder.state_dict(),
+                'epoch': epoch,
+                'config': self.config
+            }
+            torch.save(checkpoint, path)
+            return path
 
     def train(self):
         import json
