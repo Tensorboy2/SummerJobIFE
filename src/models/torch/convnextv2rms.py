@@ -290,6 +290,26 @@ def create_convnextv2_segmentation(size='base', in_chans=3, num_classes=1):
             'depths': [3, 3, 9, 3],
             'dims': [64, 128, 256, 512],
             'decoder_dims': [256, 128, 64, 32]
+        },
+        'nano': {
+            'depths': [2, 2, 6, 2],
+            'dims': [48, 96, 192, 384],
+            'decoder_dims': [192, 96, 48, 24]
+        },
+        'pico': {
+            'depths': [2, 2, 4, 2],
+            'dims': [32, 64, 128, 256],
+            'decoder_dims': [128, 64, 32, 16]
+        },
+        'femto': {
+            'depths': [1, 2, 4, 2],
+            'dims': [24, 48, 96, 192],
+            'decoder_dims': [96, 48, 24, 12]
+        },
+        'atto': {
+            'depths': [1, 2, 2, 2],
+            'dims': [16, 32, 64, 128],
+            'decoder_dims': [64, 32, 16, 8]
         }
     }
     if size not in configs:
@@ -320,6 +340,26 @@ def create_convnextv2_mae(size='base', in_chans=12, mask_ratio=0.75):
             'depths': [3, 3, 9, 3],
             'dims': [64, 128, 256, 512],
             'decoder_dims': [256, 128, 64, 32]
+        },
+        'nano': {
+            'depths': [2, 2, 6, 2],
+            'dims': [48, 96, 192, 384],
+            'decoder_dims': [192, 96, 48, 24]
+        },
+        'pico': {
+            'depths': [2, 2, 4, 2],
+            'dims': [32, 64, 128, 256],
+            'decoder_dims': [128, 64, 32, 16]
+        },
+        'femto': {
+            'depths': [1, 2, 4, 2],
+            'dims': [24, 48, 96, 192],
+            'decoder_dims': [96, 48, 24, 12]
+        },
+        'atto': {
+            'depths': [1, 2, 2, 2],
+            'dims': [16, 32, 64, 128],
+            'decoder_dims': [64, 32, 16, 8]
         }
     }
     if size not in configs:

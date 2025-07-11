@@ -701,50 +701,23 @@ class Visualizer:
                 # trialed_water_mask = consistent_spectral & np.logical_not(s1_mask)
                 overlay[enhanced_water_mask] = [1.0, 0.0, 0.0]  # Red for final water mask
                 
-                # Plot comprehensive results
-                fig, axs = plt.subplots(2, 5, figsize=(12, 6))
-                
-                # Top row: Individual masks and consistency
+                # Plot results: RGB, Spectral, JRC, S1, Enhanced Water Mask, Overlay
+                fig, axs = plt.subplots(2, 3, figsize=(14, 8))
                 axs[0,0].imshow(rgb_display)
                 axs[0,0].set_title(f'RGB ({latest_year})')
-                
-                axs[0,1].imshow(spectral_consistency, cmap='Greens', vmin=0, vmax=1)
-                axs[0,1].set_title('Spectral Consistency\n(Fraction of Years)')
-                
-                axs[0,2].imshow(jrc_consistency, cmap='Blues', vmin=0, vmax=1)
-                axs[0,2].set_title('JRC Consistency\n(Fraction of Years)')
-                
-                axs[0,3].imshow(agreement_mask, cmap='Purples', vmin=0, vmax=1)
-                axs[0,3].set_title('Spectral-JRC Agreement\n(Fraction of Years)')
-                
-                axs[0,4].imshow(s1_mask, cmap='Oranges')
-                axs[0,4].set_title(f'S1 Water Mask ({latest_year})')
-                
-                # Bottom row: Processing steps and final result
-                axs[1,0].imshow(consistent_spectral, cmap='Greens')
-                axs[1,0].set_title('Consistent Spectral\n(≥50% years)')
-                
-                axs[1,1].imshow(consistent_jrc, cmap='Blues')
-                axs[1,1].set_title('Consistent JRC\n(≥50% years)')
-                
-                axs[1,2].imshow(enhanced_water_mask, cmap='Purples')
-                axs[1,2].set_title('Enhanced Water Mask\n(Consistent + Recent)')
-                
-                axs[1,3].imshow(final_mask, cmap='Reds')
-                axs[1,3].set_title('Final Mask\n(Enhanced ∩ S1, Cleaned)')
-                
-                axs[1,4].imshow(overlay)
-                axs[1,4].set_title('Final Result Overlay')
-                
+                axs[0,1].imshow(latest_data['spectral_mask'], cmap='Greens')
+                axs[0,1].set_title('Spectral Mask')
+                axs[0,2].imshow(latest_data['jrc_mask'], cmap='Blues')
+                axs[0,2].set_title('JRC Water Mask')
+                axs[1,0].imshow(latest_data['s1_mask'], cmap='Oranges')
+                axs[1,0].set_title('S1 Water Mask')
+                axs[1,1].imshow(enhanced_water_mask, cmap='Purples')
+                axs[1,1].set_title('Enhanced Water Mask')
+                axs[1,2].imshow(overlay)
+                axs[1,2].set_title('Overlay')
                 for ax in axs.flat:
                     ax.axis('off')
-                
-                # Add colorbar for consistency plots
-                # for i in range(1, 4):
-                #     cbar = plt.colorbar(axs[0,i].images[0], ax=axs[0,i], shrink=0.6)
-                #     cbar.set_label('Fraction')
-                
-                fig.suptitle(f'{title} - Multi-Year Consistency Analysis ({len(available_years)} years)', fontsize=12)
+                fig.suptitle(f'{title} - Single Year Analysis ({latest_year})', fontsize=12)
                 plt.tight_layout()
                 plt.savefig(title+output_path, bbox_inches='tight')
                 plt.show()
