@@ -18,7 +18,7 @@ def run_mae_trainers():
         ("vit", create_vit_mae, {"in_channels": 12, "patch_size": 16, "mask_ratio": 0.75}),
         ("convnextv2", create_convnextv2_mae, {"in_chans": 12, "mask_ratio": 0.75}),
     ]
-    sizes = ["large", "small", "base"]
+    sizes = ["small", "base"]
     for model_name, create_fn, extra_kwargs in mae_model_types:
         for size in sizes:
             print(f"\n=== Pretraining {model_name.upper()} MAE ({size}) ===")
