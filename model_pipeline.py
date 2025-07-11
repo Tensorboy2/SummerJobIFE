@@ -55,10 +55,10 @@ def run_segmentation_trainers():
     Run segmentation training for all model sizes and types (ViT, ConvNeXtV2).
     """
     seg_model_types = [
-        ("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
         ("convnextv2", create_convnextv2_segmentation, {"in_chans": 12, "num_classes": 1}),
+        ("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
     ]
-    sizes = ["large", "small", "base"]
+    sizes = ["small", "base"]
     for model_name, create_fn, extra_kwargs in seg_model_types:
         for size in sizes:
             print(f"\n=== Segmentation Training {model_name.upper()} ({size}) ===")

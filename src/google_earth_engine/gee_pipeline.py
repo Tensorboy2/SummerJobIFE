@@ -12,7 +12,7 @@ def main():
     """Main execution function."""
     # Configuration
     root = os.path.dirname(__file__)
-    coordinates_file = os.path.join(root, 'shark.json')
+    coordinates_file = os.path.join(root, 'coordinates.json')
     output_folder = os.path.join(root, 'downloaded_s2_annual_composites')
     
     # Parameters
@@ -23,7 +23,7 @@ def main():
     # Create custom config if needed
     config = Config(
         project_id='summer-job-ife',
-        buffer_degrees=0.010,
+        buffer_degrees=0.023,
         cloud_threshold=35.0,
         water_occurrence_threshold=10.0,
     )
@@ -84,7 +84,7 @@ def create_visualization(coordinates_file: str, years: list, data_folder: str):
             locations=locations,
             years=years,
             data_folder=data_folder,
-            output_path='example_segmentation.pdf',
+            output_path='_segmentation.pdf',
             water_mask_method='union',
         )
     except Exception as e:

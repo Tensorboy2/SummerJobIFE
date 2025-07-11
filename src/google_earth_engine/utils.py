@@ -607,7 +607,7 @@ class Visualizer:
         """
         for loc in locations:
             lat, lon = loc['lat'], loc['lon']
-            title = f"Lat: {lat:.4f}, Lon: {lon:.4f}"
+            title = f"Lat_{lat:.4f}_Lon_{lon:.4f}"
             try:
                 yearly_data = {}
                 available_years = []
@@ -746,6 +746,7 @@ class Visualizer:
                 
                 fig.suptitle(f'{title} - Multi-Year Consistency Analysis ({len(available_years)} years)', fontsize=12)
                 plt.tight_layout()
+                plt.savefig(title+output_path, bbox_inches='tight')
                 plt.show()
                 
                 # Print summary statistics
@@ -793,11 +794,6 @@ class Visualizer:
                 # plt.tight_layout()
                 # plt.show()
 
-                # Print summary
-                print(f"\nSummary for {title} (CLEANED):")
-                print(f"  Water pixels (consistent): {np.sum(water_consistent)}")
-                print(f"  Solar panel pixels (consistent): {np.sum(spectral_consistent)}")
-                print(f"  Solar panels on water (final): {np.sum(mask_on_water_clean)}")
                 
             except Exception as e:
                 print(f"Error processing location {lat}, {lon}: {e}")
