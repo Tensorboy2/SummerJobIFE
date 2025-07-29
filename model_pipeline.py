@@ -60,7 +60,7 @@ def run_segmentation_trainers():
         #("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
     ]
     # sizes = ["atto","femto","pico","nano","small", "base"]
-    sizes = ["large","small","atto"]
+    sizes = ["atto"]
 
     for model_name, create_fn, extra_kwargs in seg_model_types:
         for size in sizes:
@@ -84,8 +84,11 @@ def run_segmentation_trainers():
             kwargs["size"] = size
             model = create_fn(**kwargs).to(device=device)
             # Optionally load encoder weights for segmentation (if available)
-            encoder_ckpt_path = os.path.join('checkpoints', model_name, f'{model_name}_mae_{size}', f'encoder_{model_name}_mae_{size}_best.pt')
-            if os.path.exists(encoder_ckpt_path):
+            import glob
+            ckpt_pattern = os.path.join('checkpoints', model_name, f'*{model_name}_mae_{size}*', f'encoder_*{model_name}_mae_{size}*_best.pt')
+            ckpt_files = glob.glob(ckpt_pattern)
+            if ckpt_files:
+                encoder_ckpt_path = ckpt_files[0]
                 ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
                 model.encoder.load_state_dict(ckpt['encoder'], strict=True)
                 print(f"Loaded pretrained encoder from: {encoder_ckpt_path}")
