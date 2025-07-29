@@ -60,7 +60,7 @@ def run_segmentation_trainers():
         #("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
     ]
     # sizes = ["atto","femto","pico","nano","small", "base"]
-    sizes = ["atto"]
+    sizes = ["large"]
 
     for model_name, create_fn, extra_kwargs in seg_model_types:
         for size in sizes:
