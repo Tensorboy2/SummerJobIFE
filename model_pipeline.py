@@ -85,11 +85,12 @@ def run_segmentation_trainers():
             model = create_fn(**kwargs).to(device=device)
             # Optionally load encoder weights for segmentation (if available)
             import glob
-            ckpt_pattern = os.path.join('checkpoints', model_name, f'*{model_name}_mae_{size}*', f'encoder_*{model_name}_mae_{size}*_best.pt')
+            ckpt_pattern = os.path.join('checkpoints', 'mae', f'*{model_name}_mae_{size}*', f'encoder_*{model_name}_mae_{size}*_best.pt')
             ckpt_files = glob.glob(ckpt_pattern)
+            
             print(f"Looking for pretrained encoder checkpoints: {ckpt_pattern}")
             if ckpt_files:
-                encoder_ckpt_path = ckpt_files[0]
+                encoder_ckpt_path = 'checkpoints/mae/ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844/encoder_ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844_best.pt'
                 ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
                 model.encoder.load_state_dict(ckpt['encoder'], strict=True)
                 print(f"Loaded pretrained encoder from: {encoder_ckpt_path}")
