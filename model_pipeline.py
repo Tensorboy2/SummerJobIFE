@@ -87,6 +87,7 @@ def run_segmentation_trainers():
             import glob
             ckpt_pattern = os.path.join('checkpoints', model_name, f'*{model_name}_mae_{size}*', f'encoder_*{model_name}_mae_{size}*_best.pt')
             ckpt_files = glob.glob(ckpt_pattern)
+            print(f"Looking for pretrained encoder checkpoints: {ckpt_pattern}")
             if ckpt_files:
                 encoder_ckpt_path = ckpt_files[0]
                 ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
