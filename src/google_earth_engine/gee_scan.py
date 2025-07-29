@@ -479,13 +479,17 @@ if __name__ == '__main__':
     regions = {
         # 'netherland_test_area_10': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
         # 'netherland_test_area_11': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
-        'europe2': [0, 30, 30, 60], # Full Europe (will take a very long time to export)
+        # 'europe2': [0, 30, 30, 60], # Full Europe (will take a very long time to export)
+        # 'test_single_year3': [6.0, 51.0, 6.2, 53.0], # Full Europe (will take a very long time to export)
+        # 'test_single_year_china3': [117.5, 32.7, 118.5, 33.7], # Full Europe (will take a very long time to export)
+        'test_single_year_china3': [103.5, 20.0, 122.0, 35.0], # Full Europe (will take a very long time to export)
     }
-    
+    #"lon": 117.9844,
+        # "lat": 33.2225
     # Define the years for consistency masking
     # These years will be used to filter the S2 collection for generating yearly masks.
     # It's crucial that these years have data in your S2 collection.
-    years_for_consistency_analysis = [str(y) for y in range(2022, 2025)] # E.g., 2021, 2022, 2023
+    years_for_consistency_analysis = [2025]#[str(y) for y in range(2022, 2025)] # E.g., 2021, 2022, 2023
     
     # Base asset path for your exports
     base_output_asset_path = 'users/sigurdvargdal/consistent_solar_panels' 
@@ -495,8 +499,8 @@ if __name__ == '__main__':
         print(f"\n=== Processing {region_name} ===")
         
         tasks = pipeline.run_regional_pipeline(
-            start_date=f'{years_for_consistency_analysis[0]}-08-01', # Start from the first year
-            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-07-01', # End after the last year
+            start_date=f'{years_for_consistency_analysis[0]}-04-01', # Start from the first year
+            end_date=f'{int(years_for_consistency_analysis[-1]) + 1}-08-01', # End after the last year
             output_asset_base=base_output_asset_path,
             region_name=region_name,
             region_bounds=bounds,

@@ -59,7 +59,9 @@ def run_segmentation_trainers():
         ("convnextv2", create_convnextv2_segmentation, {"in_chans": 12, "num_classes": 1}),
         #("vit", create_vit_segmentation, {"in_channels": 12, "num_classes": 1, "patch_size": 16}),
     ]
-    sizes = ["atto","femto","pico","nano","small", "base"]
+    # sizes = ["atto","femto","pico","nano","small", "base"]
+    sizes = ["large","small","atto"]
+
     for model_name, create_fn, extra_kwargs in seg_model_types:
         for size in sizes:
             print(f"\n=== Segmentation Training {model_name.upper()} ({size}) ===")
