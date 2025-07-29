@@ -67,7 +67,7 @@ def run_segmentation_trainers():
             print(f"\n=== Segmentation Training {model_name.upper()} ({size}) ===")
             config = {
                 'val_ratio': 0.2,
-                'batch_size': 32,
+                'batch_size': 16,  # Adjusted for segmentation
                 'data_type': 'segmentation',
                 'lr': 0.0001,
                 'weight_decay': 0.2,
@@ -90,7 +90,8 @@ def run_segmentation_trainers():
             
             print(f"Looking for pretrained encoder checkpoints: {ckpt_pattern}")
             if ckpt_files:
-                encoder_ckpt_path = 'checkpoints/mae/ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844/encoder_ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844_best.pt'
+                encoder_ckpt_path = 'checkpoints/mae/ConvNeXtV2MAE_sizelarge_patch16_mask0.75_convnextv2_mae_large_20250729_055746/encoder_ConvNeXtV2MAE_sizelarge_patch16_mask0.75_convnextv2_mae_large_20250729_055746_best.pt'
+                # encoder_ckpt_path = 'checkpoints/mae/ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844/encoder_ConvNeXtV2MAE_sizeatto_patch16_mask0.75_convnextv2_mae_atto_20250728_072844_best.pt'
                 ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
                 model.encoder.load_state_dict(ckpt['encoder'], strict=True)
                 print(f"Loaded pretrained encoder from: {encoder_ckpt_path}")
