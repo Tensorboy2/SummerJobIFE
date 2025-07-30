@@ -3,7 +3,7 @@ import torch
 import os
 
 from trainer import EfficientTrainer
-from models.torch.u_net import UNet, HalfUNet
+from u_net import UNet, HalfUNet
 from models.torch.YOLOv8 import YOLOMultiTask
 from models.torch.yolo_utils.data import get_dataloaders
 

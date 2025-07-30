@@ -479,10 +479,10 @@ if __name__ == '__main__':
     regions = {
         # 'netherland_test_area_10': [6.13, 52.47, 6.15, 52.49], # A smaller test area in Zwolle in netherlands
         # 'netherland_test_area_11': [6.0, 51.0, 6.2, 53.0], # A smaller test area in Zwolle in netherlands
-        # 'europe2': [0, 30, 30, 60], # Full Europe (will take a very long time to export)
+        'europe3': [0, 30, 30, 60], # Full Europe (will take a very long time to export)
         # 'test_single_year3': [6.0, 51.0, 6.2, 53.0], # Full Europe (will take a very long time to export)
         # 'test_single_year_china3': [117.5, 32.7, 118.5, 33.7], # Full Europe (will take a very long time to export)
-        'test_single_year_china3': [103.5, 20.0, 122.0, 35.0], # Full Europe (will take a very long time to export)
+        # 'test_single_year_china3': [103.5, 20.0, 122.0, 35.0], # Full Europe (will take a very long time to export)
     }
     #"lon": 117.9844,
         # "lat": 33.2225

@@ -1,7 +1,8 @@
 import torch.optim as op
 from src.custom_dataset import get_dataloaders
 # from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
-from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+# from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
+from src.models.torch.convnextv2rms import create_convnextv2_mae, create_convnextv2_segmentation
 from src.train_mae import MAETrainer
 from src.train_segmentation import SegmentationTrainer
 import torch
@@ -33,11 +34,14 @@ def main():
     mask_files = sorted([f for f in os.listdir(mask_dir) if f.endswith('.pt')])
 
     # Load model
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1)
-    encoder_ckpt_path = "src/training_output/segmentation/pretrained_convnextv2rms.pt"
-    ckpt = torch.load(encoder_ckpt_path, map_location='cpu')
-    model.encoder.load_state_dict(ckpt['encoder'], strict=True)
-    model.decoder.load_state_dict(ckpt['decoder'], strict=True)
+    model = create_convnextv2_segmentation(in_chans=12, num_classes=1, size='atto').to(device=device)
+    # encoder_ckpt_path = "src/training_output/segmentation/pretrained_convnextv2rms.pt"
+    encoder_ckpt_path = 'checkpoints/segmentation/convnextv2_seg_atto/best_model_convnextv2_seg_atto.pt'
+    ckpt = torch.load(encoder_ckpt_path, map_location='cpu')['model_state_dict']
+    # print(ckpt.keys())
+    # model.encoder.load_state_dict(ckpt['encoder'], strict=False)
+    # model.decoder.load_state_dict(ckpt['decoder'], strict=False)
+    model.load_state_dict(ckpt, strict=False)
     print("Loaded pretrained encoder from:", encoder_ckpt_path)
     model = model.to(device=device)
     model.eval()
