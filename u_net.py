@@ -97,6 +97,25 @@ class Decoder(nn.Module):
         self.block4 = ConvNeXtBlock(32)
         self.classifier = nn.Conv2d(32, num_classes, kernel_size=1)
 
+        self._init_weights()
+
+    def _init_weights(self):
+        # Kaiming normal for conv layers, zero for classifier
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                if m is self.classifier:
+                    nn.init.zeros_(m.weight)
+                    if m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                else:
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    if m.bias is not None:
+                        nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
     def forward(self, x):
         x = self.conv1(x)
         x = self.block1(x)
@@ -302,7 +321,7 @@ class CustomDataset(Dataset):
         return img, mask
 
 def get_dataloaders(config):
-    root_path = 'src/data/processed_unique'
+    root_path = 'src/data/processed_unique_non_zero'
     image_dir = os.path.join(root_path, 'images')
     mask_dir = os.path.join(root_path, 'masks')
     
@@ -348,7 +367,9 @@ def train_model():
             'bce': 0.3,     # Standard BCE
             'dice': 0.4,    # Dice loss for overlap
             'focal': 0.3    # Focal loss for hard examples
-        }
+        },
+        'weight_decay': 0,  # Regularization
+        'warmup_epochs': 0,  # No warmup for simplicity
     }
     
     # Initialize model
@@ -361,7 +382,7 @@ def train_model():
     train_loader, val_loader = get_dataloaders(config)
     
     # Loss and optimizer
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['learning_rate'], weight_decay=0.03)
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['learning_rate'], weight_decay=config.get('weight_decay', 0))
     # Warmup scheduler: linearly increase LR for a few epochs, then use ReduceLROnPlateau
     warmup_epochs = 0
     def lr_lambda(epoch):
@@ -383,96 +404,106 @@ def train_model():
     print(f"Training batches: {len(train_loader)}, Validation batches: {len(val_loader)}")
     
     for epoch in range(config['num_epochs']):
-        # Training phase
         model.train()
         epoch_train_loss = 0.0
         epoch_train_iou = 0.0
-        
-        for batch_idx, (images, masks) in enumerate(train_loader):
+
+        for train_batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(device), masks.to(device)
-            
+
             optimizer.zero_grad()
-            
-            # Forward pass
+
             outputs = model(images)
-            
-            # Calculate loss
             loss = combined_loss(outputs, masks, config['loss_weights'])
-            
-            # Calculate IoU
+
+            # Calculate IoU (always in float32 for accuracy)
             with torch.no_grad():
-                iou = iou_score(outputs, masks)
+                iou = iou_score(outputs.float(), masks.float())
             
             # Backward pass
             loss.backward()
             optimizer.step()
-            
+
+            # scaler.scale(loss).backward()
+            # scaler.step(optimizer)
+            # scaler.update()
+
             epoch_train_loss += loss.item()
             epoch_train_iou += iou.item()
-            
-            # Print progress
-            if batch_idx % 1 == 0:
-                avg_loss = epoch_train_loss / (batch_idx + 1)
-                avg_iou = epoch_train_iou / (batch_idx + 1)
+
+            if train_batch_idx % 1 == 0:
+                avg_loss = epoch_train_loss / (train_batch_idx + 1)
+                avg_iou = epoch_train_iou / (train_batch_idx + 1)
                 print(f"Epoch {epoch+1}/{config['num_epochs']}, "
-                      f"Batch {batch_idx}/{len(train_loader)}, "
+                      f"Batch {train_batch_idx}/{len(train_loader)}, "
                       f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
-                # break
-            
-            # Plot examples occasionally
-            if batch_idx % 50 == 0 and batch_idx > 0:
+
+            if train_batch_idx % 20 == 0 and train_batch_idx > 0:
                 with torch.no_grad():
-                    plot_example(images[0], masks[0], outputs[0], epoch+1, batch_idx)
-            
-            # Learning rate warmup and scheduling
-            # if batch_idx + epoch*len(train_loader) < warmup_epochs:
-            #     warmup_scheduler.step(batch_idx + epoch*len(train_loader))
-            # else:
-            #     scheduler.step(avg_val_loss)
+                    plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
+            if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
+                print("Breaking after 40 batches for quick testing")
+                break  # Remove this line to train on the entire dataset
+            # break # Remove this line to train on the entire dataset
         
-        # # Calculate average training metrics
-        # avg_train_loss = epoch_train_loss / len(train_loader)
-        # avg_train_iou = epoch_train_iou / len(train_loader)
+        # Calculate average training metrics
+        avg_train_loss = epoch_train_loss / len(train_loader)
+        avg_train_iou = epoch_train_iou / len(train_loader)
         
-        # # Validation phase
-        # model.eval()
-        # epoch_val_loss = 0.0
-        # epoch_val_iou = 0.0
+        # Validation phase
+        model.eval()
+        epoch_val_loss = 0.0
+        epoch_val_iou = 0.0
         
-        # with torch.no_grad():
-        #     for images, masks in val_loader:
-        #         images, masks = images.to(device), masks.to(device)
+        with torch.no_grad():
+            for val_batch_idx , (images, masks) in enumerate(val_loader):
+                images, masks = images.to(device), masks.to(device)
                 
-        #         outputs = model(images)
+                outputs = model(images)
                 
-        #         # Calculate metrics
-        #         val_loss = combined_loss(outputs, masks, config['loss_weights'])
-        #         val_iou = iou_score(outputs, masks)
+                # Calculate metrics
+                val_loss = combined_loss(outputs, masks, config['loss_weights'])
+                val_iou = iou_score(outputs, masks)
                 
-        #         epoch_val_loss += val_loss.item()
-        #         epoch_val_iou += val_iou.item()
+                epoch_val_loss += val_loss.item()
+                epoch_val_iou += val_iou.item()
+
+                if val_batch_idx % 1 == 0:
+                    avg_loss = epoch_train_loss / (val_batch_idx + 1)
+                    avg_iou = epoch_train_iou / (val_batch_idx + 1)
+                    print(f"Epoch {epoch+1}/{config['num_epochs']}, "
+                        f"Batch {val_batch_idx}/{len(train_loader)}, "
+                        f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
+
+                if val_batch_idx % 10 == 0 and val_batch_idx >= 10:
+                        plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
+                        break
+                # if batch_idx >= 100:  # Limit to first 100 batches for quick testing
+                #     print("Breaking after 100 batches for quick testing")
+                #     break  # Remove this line to train on the entire dataset
+                    # break # Remove this line to validate on the entire dataset
         
-        # avg_val_loss = epoch_val_loss / len(val_loader)
-        # avg_val_iou = epoch_val_iou / len(val_loader)
+        avg_val_loss = epoch_val_loss / len(val_loader)
+        avg_val_iou = epoch_val_iou / len(val_loader)
         
-        # # Store history
-        # train_losses.append(avg_train_loss)
-        # train_ious.append(avg_train_iou)
-        # val_losses.append(avg_val_loss)
-        # val_ious.append(avg_val_iou)
+        # Store history
+        train_losses.append(avg_train_loss)
+        train_ious.append(avg_train_iou)
+        val_losses.append(avg_val_loss)
+        val_ious.append(avg_val_iou)
         
         
         
-        # # Save best model
-        # if avg_val_iou > best_val_iou:
-        #     best_val_iou = avg_val_iou
-        #     torch.save(model.state_dict(), 'best_unet_model.pth')
-        #     print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
+        # Save best model
+        if avg_val_iou > best_val_iou:
+            best_val_iou = avg_val_iou
+            torch.save(model.state_dict(), 'best_unet_model.pth')
+            print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
         
-        # print(f"Epoch {epoch+1}/{config['num_epochs']} - "
-        #       f"Train Loss: {avg_train_loss:.4f}, Train IoU: {avg_train_iou:.4f}, "
-        #       f"Val Loss: {avg_val_loss:.4f}, Val IoU: {avg_val_iou:.4f}")
-        # print("-" * 80)
+        print(f"Epoch {epoch+1}/{config['num_epochs']} - "
+              f"Train Loss: {avg_train_loss:.4f}, Train IoU: {avg_train_iou:.4f}, "
+              f"Val Loss: {avg_val_loss:.4f}, Val IoU: {avg_val_iou:.4f}")
+        print("-" * 80)
     
     return model, train_losses, train_ious, val_losses, val_ious
 
