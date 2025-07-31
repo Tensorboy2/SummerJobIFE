@@ -359,7 +359,7 @@ def train_model():
         'batch_size': 8,
         'val_ratio': 0.2,
         'num_workers': 0,
-        'learning_rate': 2e-4,  # Lower learning rate
+        'learning_rate': 2e-3,  # Lower learning rate
         'num_epochs': 20,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
@@ -368,13 +368,16 @@ def train_model():
             'dice': 0.4,    # Dice loss for overlap
             'focal': 0.3    # Focal loss for hard examples
         },
-        'weight_decay': 0,  # Regularization
-        'warmup_epochs': 0,  # No warmup for simplicity
+        'weight_decay': 0.0,  # Regularization
+        'warmup_steps': 0,  # No warmup for simplicity
+        'learning_rate_decay': 'cosine',  # Use learning rate decay
+        'plot_examples': True,  # Whether to plot examples during training
+        'save_best_model': True  # Whether to save the best model based on validation Io
     }
     
     # Initialize model
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    # model = UNet(in_ch=12, out_ch=1)
+    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    model = UNet(in_ch=12, out_ch=1)
     device = torch.device(config['device'])
     model = model.to(device)
     
@@ -384,13 +387,16 @@ def train_model():
     # Loss and optimizer
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['learning_rate'], weight_decay=config.get('weight_decay', 0))
     # Warmup scheduler: linearly increase LR for a few epochs, then use ReduceLROnPlateau
-    warmup_epochs = 0
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return float(epoch + 1) / float(warmup_epochs)
-        return 1.0
-    warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
+
+    def lr_lambda(step):
+        if step < config.get('warmup_steps', 0):
+            return float(step + 1) / float(config.get('warmup_steps', 1e-8)) # Linear warmup
+        elif step > config.get('warmup_steps', 0) and config['learning_rate_decay'] == 'cosine':
+            # Cosine decay after warmup:
+            return 0.5 * (1 + np.cos(np.pi * (step - config.get('warmup_steps', 0)) / (config['num_epochs'] * len(train_loader) - config.get('warmup_steps', 0))))
+        else:
+            return 1.0
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     # Training history
     train_losses = []
@@ -424,9 +430,7 @@ def train_model():
             loss.backward()
             optimizer.step()
 
-            # scaler.scale(loss).backward()
-            # scaler.step(optimizer)
-            # scaler.update()
+            scheduler.step()  # Update learning rate
 
             epoch_train_loss += loss.item()
             epoch_train_iou += iou.item()
@@ -438,7 +442,7 @@ def train_model():
                       f"Batch {train_batch_idx}/{len(train_loader)}, "
                       f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
 
-            if train_batch_idx % 20 == 0 and train_batch_idx > 0:
+            if train_batch_idx % 20 == 0 and train_batch_idx > 0 and config.get('plot_examples', False):
                 with torch.no_grad():
                     plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
             if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
@@ -447,8 +451,8 @@ def train_model():
             # break # Remove this line to train on the entire dataset
         
         # Calculate average training metrics
-        avg_train_loss = epoch_train_loss / len(train_loader)
-        avg_train_iou = epoch_train_iou / len(train_loader)
+        avg_train_loss = epoch_train_loss / len(train_batch_idx)
+        avg_train_iou = epoch_train_iou / len(train_batch_idx)
         
         # Validation phase
         model.eval()
@@ -475,7 +479,7 @@ def train_model():
                         f"Batch {val_batch_idx}/{len(train_loader)}, "
                         f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
 
-                if val_batch_idx % 10 == 0 and val_batch_idx >= 10:
+                if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):
                         plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
                         break
                 # if batch_idx >= 100:  # Limit to first 100 batches for quick testing
@@ -483,8 +487,8 @@ def train_model():
                 #     break  # Remove this line to train on the entire dataset
                     # break # Remove this line to validate on the entire dataset
         
-        avg_val_loss = epoch_val_loss / len(val_loader)
-        avg_val_iou = epoch_val_iou / len(val_loader)
+        avg_val_loss = epoch_val_loss / (1 + val_batch_idx)
+        avg_val_iou = epoch_val_iou / (1 + val_batch_idx)
         
         # Store history
         train_losses.append(avg_train_loss)
@@ -495,7 +499,7 @@ def train_model():
         
         
         # Save best model
-        if avg_val_iou > best_val_iou:
+        if avg_val_iou > best_val_iou and config.get('save_best_model', False):
             best_val_iou = avg_val_iou
             torch.save(model.state_dict(), 'best_unet_model.pth')
             print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
