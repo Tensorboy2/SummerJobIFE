@@ -437,24 +437,24 @@ def train_model():
             epoch_train_loss += loss.item()
             epoch_train_iou += iou.item()
 
-            if train_batch_idx % 1 == 0:
+            if train_batch_idx % 10 == 0:
                 avg_loss = epoch_train_loss / (train_batch_idx + 1)
                 avg_iou = epoch_train_iou / (train_batch_idx + 1)
                 print(f"Epoch {epoch+1}/{config['num_epochs']}, "
                       f"Batch {train_batch_idx}/{len(train_loader)}, "
                       f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
 
-            if train_batch_idx % 20 == 0 and train_batch_idx > 0 and config.get('plot_examples', False):
-                with torch.no_grad():
-                    plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
-            if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
-                print("Breaking after 40 batches for quick testing")
+            # if train_batch_idx % 20 == 0 and train_batch_idx > 0 and config.get('plot_examples', False):
+            #     with torch.no_grad():
+            #         plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
+            # if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
+            #     print("Breaking after 40 batches for quick testing")
                 # break  # Remove this line to train on the entire dataset
             # break # Remove this line to train on the entire dataset
         
         # Calculate average training metrics
-        avg_train_loss = epoch_train_loss / len(train_batch_idx)
-        avg_train_iou = epoch_train_iou / len(train_batch_idx)
+        avg_train_loss = epoch_train_loss / (1+train_batch_idx)
+        avg_train_iou = epoch_train_iou / (1+train_batch_idx)
         
         # Validation phase
         model.eval()
@@ -474,15 +474,15 @@ def train_model():
                 epoch_val_loss += val_loss.item()
                 epoch_val_iou += val_iou.item()
 
-                if val_batch_idx % 1 == 0:
+                if val_batch_idx % 10 == 0:
                     avg_loss = epoch_train_loss / (val_batch_idx + 1)
                     avg_iou = epoch_train_iou / (val_batch_idx + 1)
                     print(f"Epoch {epoch+1}/{config['num_epochs']}, "
                         f"Batch {val_batch_idx}/{len(train_loader)}, "
                         f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
 
-                if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):
-                        plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
+                # if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):
+                #         plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
                         # break
                 # if batch_idx >= 100:  # Limit to first 100 batches for quick testing
                 #     print("Breaking after 100 batches for quick testing")
