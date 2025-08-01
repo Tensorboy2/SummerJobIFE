@@ -43,24 +43,24 @@ class UNet(nn.Module):
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
         self.name = 'unet'
-        self._init_weights()
+    #     self._init_weights()
 
-    def _init_weights(self):
-        # Kaiming normal for conv layers, zero for classifier
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                if m is self.classifier:
-                    nn.init.zeros_(m.weight)
-                    if m.bias is not None:
-                        nn.init.zeros_(m.bias)
-                else:
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                    if m.bias is not None:
-                        nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+    # def _init_weights(self):
+    #     # Kaiming normal for conv layers, zero for classifier
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Conv2d):
+    #             if m is self.classifier:
+    #                 nn.init.zeros_(m.weight)
+    #                 if m.bias is not None:
+    #                     nn.init.zeros_(m.bias)
+    #             else:
+    #                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+    #                 if m.bias is not None:
+    #                     nn.init.zeros_(m.bias)
+    #         elif isinstance(m, nn.Linear):
+    #             nn.init.xavier_uniform_(m.weight)
+    #             if m.bias is not None:
+    #                 nn.init.zeros_(m.bias)
 
     def forward(self, x):
         e1 = self.enc1(x)
