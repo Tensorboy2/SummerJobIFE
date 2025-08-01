@@ -533,26 +533,16 @@ def train_model():
     return model, train_losses, train_ious, val_losses, val_ious
 
 if __name__ == "__main__":
+    import pandas as pd
     model, train_losses, train_ious, val_losses, val_ious = train_model()
-    
-    # Plot training curves
-    plt.figure(figsize=(15, 5))
-    
-    plt.subplot(1, 2, 1)
-    plt.plot(train_losses, label='Train Loss')
-    plt.plot(val_losses, label='Val Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.title('Training and Validation Loss')
-    
-    plt.subplot(1, 2, 2)
-    plt.plot(train_ious, label='Train IoU')
-    plt.plot(val_ious, label='Val IoU')
-    plt.xlabel('Epoch')
-    plt.ylabel('IoU')
-    plt.legend()
-    plt.title('Training and Validation IoU')
-    
-    plt.tight_layout()
-    plt.show()
+
+    # Save metrics as a pandas DataFrame
+    metrics_df = pd.DataFrame({
+        'epoch': list(range(1, len(train_losses) + 1)),
+        'train_loss': train_losses,
+        'val_loss': val_losses,
+        'train_iou': train_ious,
+        'val_iou': val_ious
+    })
+    metrics_df.to_csv(f"{model.name}_metrics.csv", index=False)
+    print(f"Metrics saved to {model.name}_metrics.csv")
