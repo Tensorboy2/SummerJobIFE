@@ -379,7 +379,7 @@ def train_model():
         'batch_size': 64,
         'val_ratio': 0.2,
         'num_workers': 0,
-        'learning_rate': 2e-4,  # Lower learning rate
+        'learning_rate': 8e-4,  # Lower learning rate
         'num_epochs': 20,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!

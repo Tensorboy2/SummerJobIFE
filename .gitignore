@@ -8,5 +8,6 @@
 *.pdf
 *.npy
 *.json
+*.csv
 __pycache__
 checkpoints/
