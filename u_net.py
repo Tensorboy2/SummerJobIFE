@@ -321,7 +321,7 @@ class CustomDataset(Dataset):
         return img, mask
 
 def get_dataloaders(config):
-    root_path = 'src/data/processed_unique_non_zero'
+    root_path = 'src/data/processed_unique'
     image_dir = os.path.join(root_path, 'images')
     mask_dir = os.path.join(root_path, 'masks')
     
@@ -357,7 +357,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 16,
+        'batch_size': 64,
         'val_ratio': 0.2,
         'num_workers': 0,
         'learning_rate': 2e-4,  # Lower learning rate
