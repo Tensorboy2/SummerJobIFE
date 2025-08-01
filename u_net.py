@@ -494,8 +494,8 @@ def train_model():
                 epoch_val_iou += val_iou.item()
 
                 if val_batch_idx % 10 == 0:
-                    avg_loss = epoch_train_loss / (val_batch_idx + 1)
-                    avg_iou = epoch_train_iou / (val_batch_idx + 1)
+                    avg_loss = epoch_val_loss / (val_batch_idx + 1)
+                    avg_iou = epoch_val_iou / (val_batch_idx + 1)
                     print(f"Epoch {epoch+1}/{config['num_epochs']}, "
                         f"Batch {val_batch_idx}/{len(train_loader)}, "
                         f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
