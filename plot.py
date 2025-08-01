@@ -45,6 +45,6 @@ if __name__ == "__main__":
     # Example usage: add more files as needed
     files = [
         'convnextv2_metrics.csv',
-        # 'unet_metrics.csv',  # Uncomment/add more as needed
+        'unet_metrics.csv',  # Uncomment/add more as needed
     ]
     plot_training_history(files)
