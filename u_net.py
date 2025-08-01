@@ -357,10 +357,10 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 8,
+        'batch_size': 128,
         'val_ratio': 0.2,
         'num_workers': 0,
-        'learning_rate': 2e-3,  # Lower learning rate
+        'learning_rate': 2e-4,  # Lower learning rate
         'num_epochs': 20,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
