@@ -353,6 +353,7 @@ def get_dataloaders(config):
     
     return train_loader, val_loader
 
+
 def train_model():
     # Configuration
     config = {
@@ -371,8 +372,9 @@ def train_model():
         'weight_decay': 0.0,  # Regularization
         'warmup_steps': 0,  # No warmup for simplicity
         'learning_rate_decay': 'cosine',  # Use learning rate decay
-        'plot_examples': True,  # Whether to plot examples during training
+        'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
+
     }
     
     # Initialize model
@@ -447,7 +449,7 @@ def train_model():
                     plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
             if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
                 print("Breaking after 40 batches for quick testing")
-                break  # Remove this line to train on the entire dataset
+                # break  # Remove this line to train on the entire dataset
             # break # Remove this line to train on the entire dataset
         
         # Calculate average training metrics
@@ -481,7 +483,7 @@ def train_model():
 
                 if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):
                         plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
-                        break
+                        # break
                 # if batch_idx >= 100:  # Limit to first 100 batches for quick testing
                 #     print("Breaking after 100 batches for quick testing")
                 #     break  # Remove this line to train on the entire dataset
