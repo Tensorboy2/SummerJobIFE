@@ -275,6 +275,37 @@ def combined_loss(preds, targets, loss_weights=None):
     
     return total_loss
 
+# --- Metric helpers ---
+def bce_loss(preds, targets):
+    return nn.BCEWithLogitsLoss()(preds, targets)
+
+def dice_coeff(preds, targets, smooth=1e-8):
+    preds = torch.sigmoid(preds)
+    intersection = (preds * targets).sum(dim=(2, 3))
+    dice = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
+    return dice.mean()
+
+def get_confusion_matrix(preds, targets, threshold=0.5):
+    preds = torch.sigmoid(preds)
+    preds = (preds > threshold).float()
+    targets = targets.float()
+    tp = ((preds == 1) & (targets == 1)).sum().item()
+    tn = ((preds == 0) & (targets == 0)).sum().item()
+    fp = ((preds == 1) & (targets == 0)).sum().item()
+    fn = ((preds == 0) & (targets == 1)).sum().item()
+    return tp, fp, tn, fn
+
+def precision_score(tp, fp):
+    return tp / (tp + fp + 1e-8)
+
+def recall_score(tp, fn):
+    return tp / (tp + fn + 1e-8)
+
+def f1_score(tp, fp, fn):
+    prec = precision_score(tp, fp)
+    rec = recall_score(tp, fn)
+    return 2 * (prec * rec) / (prec + rec + 1e-8)
+
 def plot_example(img, mask, pred, epoch=None, batch=None):
     """Plot example with proper handling of different input formats"""
     plt.figure(figsize=(12, 5))
@@ -422,9 +453,28 @@ def train_model():
     # Training history
     train_losses = []
     train_ious = []
+    train_bces = []
+    train_dices = []
+    train_tps = []
+    train_fps = []
+    train_tns = []
+    train_fns = []
+    train_f1s = []
+    train_recalls = []
+    train_precisions = []
+
     val_losses = []
     val_ious = []
-    
+    val_bces = []
+    val_dices = []
+    val_tps = []
+    val_fps = []
+    val_tns = []
+    val_fns = []
+    val_f1s = []
+    val_recalls = []
+    val_precisions = []
+
     best_val_iou = 0.0
     
     print(f"Training on device: {device}")
@@ -434,6 +484,12 @@ def train_model():
         model.train()
         epoch_train_loss = 0.0
         epoch_train_iou = 0.0
+        epoch_train_bce = 0.0
+        epoch_train_dice = 0.0
+        epoch_train_tp = 0
+        epoch_train_fp = 0
+        epoch_train_tn = 0
+        epoch_train_fn = 0
 
         for train_batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(device), masks.to(device)
@@ -443,98 +499,150 @@ def train_model():
             outputs = model(images)
             loss = combined_loss(outputs, masks, config['loss_weights'])
 
-            # Calculate IoU (always in float32 for accuracy)
+            # Calculate metrics
             with torch.no_grad():
                 iou = iou_score(outputs.float(), masks.float())
-            
+                bce = bce_loss(outputs, masks)
+                dice = dice_coeff(outputs, masks)
+                tp, fp, tn, fn = get_confusion_matrix(outputs, masks)
+
             # Backward pass
             loss.backward()
             optimizer.step()
-
             scheduler.step()  # Update learning rate
 
             epoch_train_loss += loss.item()
             epoch_train_iou += iou.item()
+            epoch_train_bce += bce.item()
+            epoch_train_dice += dice.item()
+            epoch_train_tp += tp
+            epoch_train_fp += fp
+            epoch_train_tn += tn
+            epoch_train_fn += fn
 
             if train_batch_idx % 10 == 0:
                 avg_loss = epoch_train_loss / (train_batch_idx + 1)
                 avg_iou = epoch_train_iou / (train_batch_idx + 1)
+                avg_bce = epoch_train_bce / (train_batch_idx + 1)
+                avg_dice = epoch_train_dice / (train_batch_idx + 1)
                 print(f"Epoch {epoch+1}/{config['num_epochs']}, "
                       f"Batch {train_batch_idx}/{len(train_loader)}, "
-                      f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
+                      f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}, BCE: {avg_bce:.4f}, Dice: {avg_dice:.4f}")
 
-            # if train_batch_idx % 20 == 0 and train_batch_idx > 0 and config.get('plot_examples', False):
-            #     with torch.no_grad():
-            #         plot_example(images[0], masks[0], outputs[0], epoch+1, train_batch_idx)
-            # if train_batch_idx >= 40:  # Limit to first 100 batches for quick testing
-            #     print("Breaking after 40 batches for quick testing")
-                # break  # Remove this line to train on the entire dataset
-            # break # Remove this line to train on the entire dataset
-        
         # Calculate average training metrics
-        avg_train_loss = epoch_train_loss / (1+train_batch_idx)
-        avg_train_iou = epoch_train_iou / (1+train_batch_idx)
-        
+        n_train_batches = train_batch_idx + 1
+        avg_train_loss = epoch_train_loss / n_train_batches
+        avg_train_iou = epoch_train_iou / n_train_batches
+        avg_train_bce = epoch_train_bce / n_train_batches
+        avg_train_dice = epoch_train_dice / n_train_batches
+        avg_train_tp = epoch_train_tp
+        avg_train_fp = epoch_train_fp
+        avg_train_tn = epoch_train_tn
+        avg_train_fn = epoch_train_fn
+        avg_train_precision = precision_score(avg_train_tp, avg_train_fp)
+        avg_train_recall = recall_score(avg_train_tp, avg_train_fn)
+        avg_train_f1 = f1_score(avg_train_tp, avg_train_fp, avg_train_fn)
+
         # Validation phase
         model.eval()
         epoch_val_loss = 0.0
         epoch_val_iou = 0.0
+        epoch_val_bce = 0.0
+        epoch_val_dice = 0.0
+        epoch_val_tp = 0
+        epoch_val_fp = 0
+        epoch_val_tn = 0
+        epoch_val_fn = 0
         print("\nValidating...")
         with torch.no_grad():
             for val_batch_idx , (images, masks) in enumerate(val_loader):
                 images, masks = images.to(device), masks.to(device)
-                
                 outputs = model(images)
-                
-                # Calculate metrics
                 val_loss = combined_loss(outputs, masks, config['loss_weights'])
                 val_iou = iou_score(outputs, masks)
-                
+                bce = bce_loss(outputs, masks)
+                dice = dice_coeff(outputs, masks)
+                tp, fp, tn, fn = get_confusion_matrix(outputs, masks)
+
                 epoch_val_loss += val_loss.item()
                 epoch_val_iou += val_iou.item()
+                epoch_val_bce += bce.item()
+                epoch_val_dice += dice.item()
+                epoch_val_tp += tp
+                epoch_val_fp += fp
+                epoch_val_tn += tn
+                epoch_val_fn += fn
 
                 if val_batch_idx % 10 == 0:
                     avg_loss = epoch_val_loss / (val_batch_idx + 1)
                     avg_iou = epoch_val_iou / (val_batch_idx + 1)
+                    avg_bce = epoch_val_bce / (val_batch_idx + 1)
+                    avg_dice = epoch_val_dice / (val_batch_idx + 1)
                     print(f"Epoch {epoch+1}/{config['num_epochs']}, "
                         f"Batch {val_batch_idx}/{len(val_loader)}, "
-                        f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
+                        f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}, BCE: {avg_bce:.4f}, Dice: {avg_dice:.4f}")
 
-                # if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):
-                #         plot_example(images[0], masks[0], outputs[0], epoch+1, val_batch_idx)
-                        # break
-                # if batch_idx >= 100:  # Limit to first 100 batches for quick testing
-                #     print("Breaking after 100 batches for quick testing")
-                #     break  # Remove this line to train on the entire dataset
-                    # break # Remove this line to validate on the entire dataset
-        
-        avg_val_loss = epoch_val_loss / (1 + val_batch_idx)
-        avg_val_iou = epoch_val_iou / (1 + val_batch_idx)
-        
+        n_val_batches = val_batch_idx + 1
+        avg_val_loss = epoch_val_loss / n_val_batches
+        avg_val_iou = epoch_val_iou / n_val_batches
+        avg_val_bce = epoch_val_bce / n_val_batches
+        avg_val_dice = epoch_val_dice / n_val_batches
+        avg_val_tp = epoch_val_tp
+        avg_val_fp = epoch_val_fp
+        avg_val_tn = epoch_val_tn
+        avg_val_fn = epoch_val_fn
+        avg_val_precision = precision_score(avg_val_tp, avg_val_fp)
+        avg_val_recall = recall_score(avg_val_tp, avg_val_fn)
+        avg_val_f1 = f1_score(avg_val_tp, avg_val_fp, avg_val_fn)
+
         # Store history
         train_losses.append(avg_train_loss)
         train_ious.append(avg_train_iou)
+        train_bces.append(avg_train_bce)
+        train_dices.append(avg_train_dice)
+        train_tps.append(avg_train_tp)
+        train_fps.append(avg_train_fp)
+        train_tns.append(avg_train_tn)
+        train_fns.append(avg_train_fn)
+        train_f1s.append(avg_train_f1)
+        train_recalls.append(avg_train_recall)
+        train_precisions.append(avg_train_precision)
+
         val_losses.append(avg_val_loss)
         val_ious.append(avg_val_iou)
-        
-        
-        
+        val_bces.append(avg_val_bce)
+        val_dices.append(avg_val_dice)
+        val_tps.append(avg_val_tp)
+        val_fps.append(avg_val_fp)
+        val_tns.append(avg_val_tn)
+        val_fns.append(avg_val_fn)
+        val_f1s.append(avg_val_f1)
+        val_recalls.append(avg_val_recall)
+        val_precisions.append(avg_val_precision)
+
         # Save best model
         if avg_val_iou > best_val_iou and config.get('save_best_model', False):
             best_val_iou = avg_val_iou
             torch.save(model.state_dict(), f'{model.name}_'+'best_unet_model.pth')
             print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
-        
+
         print(f"Epoch {epoch+1}/{config['num_epochs']} - "
-              f"Train Loss: {avg_train_loss:.4f}, Train IoU: {avg_train_iou:.4f}, "
-              f"Val Loss: {avg_val_loss:.4f}, Val IoU: {avg_val_iou:.4f}")
+              f"Train Loss: {avg_train_loss:.4f}, Train IoU: {avg_train_iou:.4f}, Train BCE: {avg_train_bce:.4f}, Train Dice: {avg_train_dice:.4f}, "
+              f"Val Loss: {avg_val_loss:.4f}, Val IoU: {avg_val_iou:.4f}, Val BCE: {avg_val_bce:.4f}, Val Dice: {avg_val_dice:.4f}")
+        print(f"Train TP: {avg_train_tp}, FP: {avg_train_fp}, TN: {avg_train_tn}, FN: {avg_train_fn}, F1: {avg_train_f1:.4f}, Recall: {avg_train_recall:.4f}, Precision: {avg_train_precision:.4f}")
+        print(f"Val   TP: {avg_val_tp}, FP: {avg_val_fp}, TN: {avg_val_tn}, FN: {avg_val_fn}, F1: {avg_val_f1:.4f}, Recall: {avg_val_recall:.4f}, Precision: {avg_val_precision:.4f}")
         print("-" * 80)
-    
-    return model, train_losses, train_ious, val_losses, val_ious
+
+    return model, train_losses, train_ious, val_losses, val_ious, train_bces, val_bces, train_dices, val_dices, train_tps, val_tps, train_fps, val_fps, train_tns, val_tns, train_fns, val_fns, train_f1s, val_f1s, train_recalls, val_recalls, train_precisions, val_precisions
 
 if __name__ == "__main__":
     import pandas as pd
-    model, train_losses, train_ious, val_losses, val_ious = train_model()
+    (
+        model, train_losses, train_ious, val_losses, val_ious,
+        train_bces, val_bces, train_dices, val_dices,
+        train_tps, val_tps, train_fps, val_fps, train_tns, val_tns, train_fns, val_fns,
+        train_f1s, val_f1s, train_recalls, val_recalls, train_precisions, val_precisions
+    ) = train_model()
 
     # Save metrics as a pandas DataFrame
     metrics_df = pd.DataFrame({
@@ -542,7 +650,25 @@ if __name__ == "__main__":
         'train_loss': train_losses,
         'val_loss': val_losses,
         'train_iou': train_ious,
-        'val_iou': val_ious
+        'val_iou': val_ious,
+        'train_bce': train_bces,
+        'val_bce': val_bces,
+        'train_dice': train_dices,
+        'val_dice': val_dices,
+        'train_tp': train_tps,
+        'val_tp': val_tps,
+        'train_fp': train_fps,
+        'val_fp': val_fps,
+        'train_tn': train_tns,
+        'val_tn': val_tns,
+        'train_fn': train_fns,
+        'val_fn': val_fns,
+        'train_f1': train_f1s,
+        'val_f1': val_f1s,
+        'train_recall': train_recalls,
+        'val_recall': val_recalls,
+        'train_precision': train_precisions,
+        'val_precision': val_precisions
     })
     metrics_df.to_csv(f"{model.name}_metrics.csv", index=False)
     print(f"Metrics saved to {model.name}_metrics.csv")
