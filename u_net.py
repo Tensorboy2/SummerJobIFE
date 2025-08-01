@@ -522,7 +522,7 @@ def train_model():
         # Save best model
         if avg_val_iou > best_val_iou and config.get('save_best_model', False):
             best_val_iou = avg_val_iou
-            torch.save(model.state_dict(), os.path.join(f'{model.name}','best_unet_model.pth'))
+            torch.save(model.state_dict(), f'{model.name}_'+'best_unet_model.pth')
             print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
         
         print(f"Epoch {epoch+1}/{config['num_epochs']} - "
