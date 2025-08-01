@@ -187,10 +187,10 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
-        self.name = 'convnextv2'
+        self.name = 'convnextv2_full'
         # Freeze encoder weights
-        for param in self.encoder.parameters():
-            param.requires_grad = False
+        # for param in self.encoder.parameters():
+        #     param.requires_grad = False
 
     def forward(self, x):
         x = self.encoder(x)
@@ -376,7 +376,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 64,
+        'batch_size': 32,
         'val_ratio': 0.2,
         'num_workers': 0,
         'learning_rate': 8e-4,  # Lower learning rate
@@ -388,8 +388,8 @@ def train_model():
             'dice': 0.4,    # Dice loss for overlap
             'focal': 0.3    # Focal loss for hard examples
         },
-        'weight_decay': 0.02,  # Regularization
-        'warmup_steps': 100,  # No warmup for simplicity
+        'weight_decay': 0.1,  # Regularization
+        'warmup_steps': 200,  # No warmup for simplicity
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
