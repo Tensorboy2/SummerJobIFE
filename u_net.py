@@ -42,6 +42,25 @@ class UNet(nn.Module):
         self.dec1 = DoubleConv(64, 32)
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
+        self.name = 'unet'
+        self._init_weights()
+
+    def _init_weights(self):
+        # Kaiming normal for conv layers, zero for classifier
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                if m is self.classifier:
+                    nn.init.zeros_(m.weight)
+                    if m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                else:
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    if m.bias is not None:
+                        nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         e1 = self.enc1(x)
@@ -168,7 +187,7 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
-
+        self.name = 'convnextv2'
         # Freeze encoder weights
         for param in self.encoder.parameters():
             param.requires_grad = False
@@ -357,7 +376,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 64,
+        'batch_size': 32,
         'val_ratio': 0.2,
         'num_workers': 0,
         'learning_rate': 2e-4,  # Lower learning rate
@@ -369,8 +388,8 @@ def train_model():
             'dice': 0.4,    # Dice loss for overlap
             'focal': 0.3    # Focal loss for hard examples
         },
-        'weight_decay': 0.0,  # Regularization
-        'warmup_steps': 0,  # No warmup for simplicity
+        'weight_decay': 0.02,  # Regularization
+        'warmup_steps': 100,  # No warmup for simplicity
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
@@ -378,8 +397,8 @@ def train_model():
     }
     
     # Initialize model
-    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    model = UNet(in_ch=12, out_ch=1)
+    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    # model = UNet(in_ch=12, out_ch=1)
     device = torch.device(config['device'])
     model = model.to(device)
     
@@ -410,7 +429,7 @@ def train_model():
     
     print(f"Training on device: {device}")
     print(f"Training batches: {len(train_loader)}, Validation batches: {len(val_loader)}")
-    
+    print('Training...')
     for epoch in range(config['num_epochs']):
         model.train()
         epoch_train_loss = 0.0
@@ -460,7 +479,7 @@ def train_model():
         model.eval()
         epoch_val_loss = 0.0
         epoch_val_iou = 0.0
-        
+        print("Validating...")
         with torch.no_grad():
             for val_batch_idx , (images, masks) in enumerate(val_loader):
                 images, masks = images.to(device), masks.to(device)
@@ -503,7 +522,7 @@ def train_model():
         # Save best model
         if avg_val_iou > best_val_iou and config.get('save_best_model', False):
             best_val_iou = avg_val_iou
-            torch.save(model.state_dict(), 'best_unet_model.pth')
+            torch.save(model.state_dict(), os.path.join(f'{model.name}','best_unet_model.pth'))
             print(f"New best model saved with validation IoU: {best_val_iou:.4f}")
         
         print(f"Epoch {epoch+1}/{config['num_epochs']} - "
