@@ -42,7 +42,7 @@ class UNet(nn.Module):
         self.dec1 = DoubleConv(64, 32)
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
-        self.name = 'unet'
+        self.name = 'unet_2'
     #     self._init_weights()
 
     # def _init_weights(self):
@@ -384,9 +384,9 @@ def train_model():
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 0.3,     # Standard BCE
-            'dice': 0.4,    # Dice loss for overlap
-            'focal': 0.3    # Focal loss for hard examples
+            'bce': 1.0,     # Standard BCE
+            'dice': 0.0,    # Dice loss for overlap
+            'focal': 0.0,    # Focal loss for hard examples
         },
         'weight_decay': 0.1,  # Regularization
         'warmup_steps': 200,  # No warmup for simplicity
@@ -497,7 +497,7 @@ def train_model():
                     avg_loss = epoch_val_loss / (val_batch_idx + 1)
                     avg_iou = epoch_val_iou / (val_batch_idx + 1)
                     print(f"Epoch {epoch+1}/{config['num_epochs']}, "
-                        f"Batch {val_batch_idx}/{len(train_loader)}, "
+                        f"Batch {val_batch_idx}/{len(val_loader)}, "
                         f"Loss: {avg_loss:.4f}, IoU: {avg_iou:.8f}")
 
                 # if val_batch_idx % 10 == 0 and val_batch_idx >= 10 and config.get('plot_examples', False):

@@ -1,53 +1,50 @@
-import torch.optim as op
-from src.custom_dataset import get_dataloaders
-# from src.models.torch.convnextv2 import ConvNeXtV2Segmentation, ConvNeXtV2MAE
-# from src.models.torch.convnextv2rms import ConvNeXtV2Segmentation, ConvNeXtV2MAE
-from src.models.torch.convnextv2rms import create_convnextv2_mae, create_convnextv2_segmentation
-from src.train_mae import MAETrainer
-from src.train_segmentation import SegmentationTrainer
 import torch
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 import matplotlib.pyplot as plt
 import tifffile
+import argparse
+from u_net import UNet, ConvNeXtV2Segmentation
 
 def load_s2_tiff_as_tensor(tiff_path):
-    """
-    Loads a Sentinel-2 TIFF, removes B10, returns torch tensor [C, H, W] float32.
-    Assumes TIFF is [H, W, bands] and bands are in order B1-B12.
-    """
-    arr = tifffile.imread(tiff_path)  # [H, W, bands]
-    # if arr.shape[-1] == 12:
-    #     # Remove B10 (band index 9)
-    #     arr = arr[..., [i for i in range(12) if i != 9]]  # [H, W, 11]
+    arr = tifffile.imread(tiff_path)
     if arr.shape[-1] == 13:
-        # Some products have 13 bands (B1-B12 + extra)
         arr = arr[..., [i for i in range(13) if i != 9]]
-    # Convert to torch tensor, channels first
     tensor = torch.from_numpy(arr).permute(2, 0, 1).float()*15
     return tensor
 
 def main():
     import os
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    parser = argparse.ArgumentParser(description="Inference for UNet or ConvNeXtV2 models")
+    parser.add_argument('--model', type=str, choices=['unet', 'convnextv2'], required=True, help='Model type to use')
+    parser.add_argument('--ckpt', type=str, required=True, help='Path to .pth state_dict file')
+    parser.add_argument('--tiff_dir', type=str, default='src/google_earth_engine/downloaded_s2_annual_composites', help='Directory with TIFFs for inference')
+    parser.add_argument('--n_examples', type=int, default=40, help='Number of dataset examples to visualize')
+    args = parser.parse_args()
+
     image_dir = 'src/data/processed_unique/images'
     mask_dir = 'src/data/processed_unique/masks'
     image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.pt')])
     mask_files = sorted([f for f in os.listdir(mask_dir) if f.endswith('.pt')])
 
     # Load model
-    model = create_convnextv2_segmentation(in_chans=12, num_classes=1, size='atto').to(device=device)
-    # encoder_ckpt_path = "src/training_output/segmentation/pretrained_convnextv2rms.pt"
-    encoder_ckpt_path = 'checkpoints/segmentation/convnextv2_seg_atto/best_model_convnextv2_seg_atto.pt'
-    ckpt = torch.load(encoder_ckpt_path, map_location='cpu')['model_state_dict']
-    # print(ckpt.keys())
-    # model.encoder.load_state_dict(ckpt['encoder'], strict=False)
-    # model.decoder.load_state_dict(ckpt['decoder'], strict=False)
-    model.load_state_dict(ckpt, strict=False)
-    print("Loaded pretrained encoder from:", encoder_ckpt_path)
-    model = model.to(device=device)
+    if args.model == 'unet':
+        model = UNet(in_ch=12, out_ch=1)
+    elif args.model == 'convnextv2':
+        model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    else:
+        raise ValueError(f"Unknown model: {args.model}")
+
+    # Load state_dict
+    state_dict = torch.load(args.ckpt, map_location='cpu')
+    if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:
+        state_dict = state_dict['model_state_dict']
+    model.load_state_dict(state_dict, strict=False)
+    print(f"Loaded {args.model} weights from: {args.ckpt}")
+    model = model.to(device)
     model.eval()
 
-    # Example: load TIFFs and run inference (fixed path)
-    tiff_root = 'src/google_earth_engine/downloaded_s2_annual_composites'
+    # Inference on TIFFs
+    tiff_root = args.tiff_dir
     if not os.path.isdir(tiff_root):
         print(f"TIFF directory not found: {tiff_root}")
     else:
@@ -59,9 +56,8 @@ def main():
                 img_tensor = load_s2_tiff_as_tensor(tiff_path)
                 print(f"Loaded TIFF shape: {img_tensor.shape}")
                 with torch.no_grad():
-                    pred = model(img_tensor.unsqueeze(0).to(device=device))
-                    pred = torch.sigmoid(pred).cpu()
-                # Show RGB
+                    pred = model(img_tensor.unsqueeze(0).to(device))
+                    pred = torch.sigmoid(pred).cpu() > 0.5
                 rgb = img_tensor[[3,2,1]].cpu().numpy().transpose(1,2,0)
                 rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8)
                 plt.figure(figsize=(12,4))
@@ -74,8 +70,7 @@ def main():
                 plt.title('Pred')
                 plt.axis('off')
                 plt.tight_layout()
-                plt.savefig(f'tiff_rgb_prediction_{os.path.basename(tiff_path)}.pdf', bbox_inches='tight')
-                # plt.show()
+                plt.savefig(f'tiff_rgb_prediction_{os.path.basename(tiff_path)}_{args.model}.pdf', bbox_inches='tight')
 
     # Find examples with nonzero masks
     examples = []
@@ -84,7 +79,7 @@ def main():
         mask = torch.load(os.path.join(mask_dir, mask_file))
         if mask.sum() > 0:
             examples.append((img, mask, img_file))
-        if len(examples) >= 2:
+        if len(examples) >= args.n_examples:
             break
 
     if not examples:
@@ -92,34 +87,39 @@ def main():
         return
 
     n = len(examples)
-    ncols = 3  # RGB, Prediction, Mask
+    ncols = 3
     nrows = n
     plt.figure(figsize=(4 * ncols, 4 * nrows))
     for i, (img, mask, img_file) in enumerate(examples):
         with torch.no_grad():
-            pred = model(img.unsqueeze(0).permute(0,3,1,2).to(device=device))
-            pred = torch.sigmoid(pred).cpu()
-        # RGB: Sentinel-2 B4, B3, B2 (channels 3,2,1)
-        rgb = img[:,:,[3,2,1]].cpu().numpy()  # [3, H, W]
-        # print(img.shape, rgb.shape, pred.shape, mask.shape)
-        # rgb = rgb.transpose(1,2,0)  # [H, W, 3]
-        rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8)  # normalize for display
+            if img.shape[0] == 256 and img.shape[1] == 256 and img.shape[2] == 12:
+                img_input = img.permute(2,0,1).unsqueeze(0)
+            elif img.shape[0] == 12:
+                img_input = img.unsqueeze(0)
+            else:
+                raise ValueError(f"Unexpected image shape: {img.shape}")
+            pred = model(img_input.to(device))
+            pred = torch.sigmoid(pred).cpu() >0.5
+        if img.shape[0] == 12:
+            rgb = img[[3,2,1]].cpu().numpy()
+            rgb = rgb.transpose(1,2,0)
+        else:
+            rgb = img[:,:,[3,2,1]].cpu().numpy()
+        rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8)
         plt.subplot(n, ncols, i*ncols+1)
         plt.imshow(rgb)
         plt.title(f'RGB: {img_file}')
         plt.axis('off')
-        # Prediction
         plt.subplot(n, ncols, i*ncols+2)
         plt.imshow(pred[0,0].numpy(), cmap='gray')
         plt.title('Pred')
         plt.axis('off')
-        # Mask
         plt.subplot(n, ncols, i*ncols+3)
         plt.imshow(mask.squeeze().cpu().numpy(), cmap='gray')
         plt.title('Mask')
         plt.axis('off')
     plt.tight_layout()
-    plt.savefig('segmentation_examples.pdf', bbox_inches='tight')
-    # plt.show()
+    plt.savefig(f'segmentation_examples_{args.model}.pdf', bbox_inches='tight')
+
 if __name__ == '__main__':
     main()
