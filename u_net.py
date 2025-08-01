@@ -429,8 +429,8 @@ def train_model():
     
     print(f"Training on device: {device}")
     print(f"Training batches: {len(train_loader)}, Validation batches: {len(val_loader)}")
-    print('Training...')
     for epoch in range(config['num_epochs']):
+        print('\nTraining...')
         model.train()
         epoch_train_loss = 0.0
         epoch_train_iou = 0.0
@@ -479,7 +479,7 @@ def train_model():
         model.eval()
         epoch_val_loss = 0.0
         epoch_val_iou = 0.0
-        print("Validating...")
+        print("\nValidating...")
         with torch.no_grad():
             for val_batch_idx , (images, masks) in enumerate(val_loader):
                 images, masks = images.to(device), masks.to(device)

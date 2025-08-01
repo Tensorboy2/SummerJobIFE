@@ -8,5 +8,6 @@ pillow
 scikit-learn
 # Add any other packages you use, e.g.:
 # einops
-# timm
+timm
 # pandas
+tensorboardX
