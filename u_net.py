@@ -187,10 +187,10 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
-        self.name = 'convnextv2_full'
+        self.name = 'convnextv2_locked'
         # Freeze encoder weights
-        # for param in self.encoder.parameters():
-        #     param.requires_grad = False
+        for param in self.encoder.parameters():
+            param.requires_grad = False
 
     def forward(self, x):
         x = self.encoder(x)
@@ -428,8 +428,8 @@ def train_model():
     }
     
     # Initialize model
-    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    model = UNet(in_ch=12, out_ch=1)
+    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    # model = UNet(in_ch=12, out_ch=1)
     device = torch.device(config['device'])
     model = model.to(device)
     
