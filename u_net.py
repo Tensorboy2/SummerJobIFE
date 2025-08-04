@@ -189,8 +189,8 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.num_classes = num_classes
         self.name = 'convnextv2_open'
         # Freeze encoder weights
-        for param in self.encoder.parameters():
-            param.requires_grad = False
+        # for param in self.encoder.parameters():
+        #     param.requires_grad = False
 
     def forward(self, x):
         x = self.encoder(x)
