@@ -224,7 +224,7 @@ def dice_loss(preds, targets, smooth=1e-8):
     dice_coeff = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
     return 1 - dice_coeff.mean()
 
-def focal_loss(preds, targets, alpha=1, gamma=2, smooth=1e-8):
+def focal_loss(prob, targets, alpha=1, gamma=2, smooth=1e-8):
     """
     Focal Loss for addressing class imbalance
     
@@ -236,7 +236,7 @@ def focal_loss(preds, targets, alpha=1, gamma=2, smooth=1e-8):
     # prob = torch.sigmoid(preds)
     
     # Calculate BCE loss
-    bce_loss = nn.BCEWithLogitsLoss()(preds, targets)
+    bce_loss = nn.BCELoss()(prob, targets)
     
     # Calculate p_t
     p_t = prob * targets + (1 - prob) * (1 - targets)
@@ -265,7 +265,7 @@ def combined_loss(preds, targets, loss_weights=None):
     total_loss = 0.0
     
     if loss_weights.get('bce', 0) > 0:
-        bce = nn.BCEWithLogitsLoss()(preds, targets)
+        bce = nn.BCELoss()(preds, targets)
         total_loss += loss_weights['bce'] * bce
     
     if loss_weights.get('dice', 0) > 0:
