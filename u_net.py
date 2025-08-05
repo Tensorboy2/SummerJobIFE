@@ -431,8 +431,8 @@ def train_model():
     }
     
     # Initialize model
-    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    model = UNet(in_ch=12, out_ch=1)
+    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    # model = UNet(in_ch=12, out_ch=1)
     # model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
     device = torch.device(config['device'])
     model = model.to(device)
