@@ -23,7 +23,7 @@ def main():
     # Create custom config if needed
     config = Config(
         project_id='summer-job-ife',
-        buffer_degrees=0.023,
+        buffer_degrees=0.013,
         cloud_threshold=35.0,
         water_occurrence_threshold=10.0,
     )

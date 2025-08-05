@@ -19,33 +19,83 @@ def plot_training_history(history_files):
         all_histories.append(history)
     df = pd.concat(all_histories, ignore_index=True)
 
-    # Melt for seaborn
-    loss_df = df.melt(id_vars=['epoch', 'model'], value_vars=['train_loss', 'val_loss'],
-                     var_name='type', value_name='loss')
-    iou_df = df.melt(id_vars=['epoch', 'model'], value_vars=['train_iou', 'val_iou'],
-                    var_name='type', value_name='iou')
+    # Find all metric pairs (train_xxx, val_xxx)
+    metrics = set()
+    for col in df.columns:
+        if col.startswith('train_'):
+            metric = col.replace('train_', '')
+            if f'val_{metric}' in df.columns:
+                metrics.add(metric)
 
-    plt.figure(figsize=(14, 6))
-    plt.subplot(1, 2, 1)
-    sns.lineplot(data=loss_df, x='epoch', y='loss', hue='model', style='type')
-    plt.title('Training and Validation Loss')
+    # Create plots folder if it doesn't exist
+    plot_dir = 'plots'
+    os.makedirs(plot_dir, exist_ok=True)
+
+    # Loss metrics (keep as is)
+    loss_metrics = [m for m in metrics if m in ['loss', 'bce', 'dice']]
+    for metric in loss_metrics:
+        plt.figure(figsize=(8, 6))
+        metric_df = df.melt(
+            id_vars=['epoch', 'model'],
+            value_vars=[f'train_{metric}', f'val_{metric}'],
+            var_name='type', value_name=metric
+        )
+        metric_df['type'] = metric_df['type'].str.replace(f'_{metric}', '')
+        sns.lineplot(data=metric_df, x='epoch', y=metric, hue='model', style='type')
+        plt.title(f'Training and Validation {metric.capitalize()} Comparison')
+        plt.xlabel('Epoch')
+        plt.yscale('log')
+        plt.grid(True)
+        plt.xticks(metric_df['epoch'].unique())
+        plt.ylabel(metric.capitalize())
+        plt.legend()
+        plt.tight_layout()
+        out_path = os.path.join(plot_dir, f'{metric}_comparison.pdf')
+        plt.savefig(out_path)
+        plt.close()
+
+    # Precision vs Recall plot per model
+    for model in df['model'].unique():
+        plt.figure(figsize=(8, 6))
+        for split, marker in zip(['train', 'val'], ['o', 's']):
+            plt.plot(df[df['model'] == model][f'{split}_recall'],
+                     df[df['model'] == model][f'{split}_precision'],
+                     label=f'{split.capitalize()}', marker=marker)
+        plt.title(f'Precision vs Recall for {model}')
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        out_path = os.path.join(plot_dir, f'{model}_precision_vs_recall.pdf')
+        plt.savefig(out_path)
+        plt.close()
+
+    # TP, FP, TN, FN plot (all models, all splits)
+    plt.figure(figsize=(10, 7))
+    confusion_metrics = ['tp', 'fp', 'tn', 'fn']
+    colors = ['b', 'r', 'g', 'm']
+    for i, cm in enumerate(confusion_metrics):
+        for model in df['model'].unique():
+            for split, style in zip(['train', 'val'], ['-', '--']):
+                label = f'{model} {split.upper()} {cm.upper()}'
+                plt.plot(df[df['model'] == model][f'{split}_{cm}'],
+                         label=label, color=colors[i], linestyle=style)
+    plt.title('TP, FP, TN, FN over Epochs (All Models)')
     plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-
-    plt.subplot(1, 2, 2)
-    sns.lineplot(data=iou_df, x='epoch', y='iou', hue='model', style='type')
-    plt.title('Training and Validation IoU')
-    plt.xlabel('Epoch')
-    plt.ylabel('IoU')
-
+    plt.ylabel('Count')
+    plt.grid(True)
+    plt.legend()
     plt.tight_layout()
-    plt.show()
+    out_path = os.path.join(plot_dir, 'confusion_matrix_elements.pdf')
+    plt.savefig(out_path)
+    plt.close()
 
 if __name__ == "__main__":
     # Example usage: add more files as needed
     files = [
-        'convnextv2_metrics.csv',
-        'convnextv2_full_metrics.csv',
-        'unet_metrics.csv',  # Uncomment/add more as needed
+        'results/convnextv2_locked_metrics.csv',
+        'results/convnextv2_open_metrics.csv',
+        'results/unet_2_metrics.csv',  # Uncomment/add more as needed
     ]
     plot_training_history(files)

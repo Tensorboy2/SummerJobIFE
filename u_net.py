@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, Dataset
 import os
 import numpy as np
+from convnext_v3 import create_convnextv3_segmentation
 
 class DoubleConv(nn.Module):
     def __init__(self, in_ch, out_ch):
@@ -182,7 +183,7 @@ class ConvNeXtV2Encoder(nn.Module):
 class ConvNeXtV2Segmentation(nn.Module):
     def __init__(self, in_chans=12, num_classes=1, encoder_output_channels=320):
         super().__init__()
-        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True)
+        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True,verbose=True)
         encoder = ConvNeXtV2Encoder(mmearth_model)
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
@@ -428,8 +429,9 @@ def train_model():
     }
     
     # Initialize model
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
     # model = UNet(in_ch=12, out_ch=1)
+    model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
     device = torch.device(config['device'])
     model = model.to(device)
     

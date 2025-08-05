@@ -9,5 +9,6 @@
 *.npy
 *.json
 *.csv
+*.png
 __pycache__
 checkpoints/
