@@ -408,11 +408,11 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 64,
+        'batch_size': 8,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 8e-4,  # Lower learning rate
-        'num_epochs': 20,
+        'num_epochs': 100,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
@@ -420,8 +420,8 @@ def train_model():
             'dice': 0.3,    # Dice loss for overlap
             'focal': 0.3,    # Focal loss for hard examples
         },
-        'weight_decay': 0.1,  # Regularization
-        'warmup_steps': 200,  # No warmup for simplicity
+        'weight_decay': 0.3,  # Regularization
+        'warmup_steps': 500,  # No warmup for simplicity
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
@@ -429,9 +429,9 @@ def train_model():
     }
     
     # Initialize model
-    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
     # model = UNet(in_ch=12, out_ch=1)
-    model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
+    # model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
     device = torch.device(config['device'])
     model = model.to(device)
     
