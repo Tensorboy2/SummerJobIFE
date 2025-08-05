@@ -429,7 +429,7 @@ class CustomDataset(Dataset):
         # Normalize image
         img_min, img_max = img.min(), img.max()
         if img_max > img_min:
-            img = (img - img_min) / (img_max - img_min)
+            img = 2*(img - img_min) / (img_max - img_min)
         else:
             img = torch.zeros_like(img)
 
