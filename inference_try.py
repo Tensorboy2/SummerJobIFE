@@ -73,7 +73,7 @@ def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
         axes[2+i].set_title(f'{model_name} (.pt)\nTP={tp}, FP={fp}, FN={fn}')
         axes[2+i].axis('off')
     plt.tight_layout()
-    plt.savefig(f'{plot_dir}/example{idx}_comparison_{img_file}.pdf', bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/example{idx}_comparison_{img_file}.png', bbox_inches='tight')
     plt.close()
 
 def plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir):
@@ -96,7 +96,7 @@ def plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir):
         axes[1+i].set_title(f'{model_name} (Validation pred)')
         axes[1+i].axis('off')
     plt.tight_layout()
-    plt.savefig(f'{plot_dir}/validation_{idx}_{tiff_file}.pdf', bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/validation_{idx}_{tiff_file}.png', bbox_inches='tight')
     plt.close()
 
 def load_s2_tiff_as_tensor(tiff_path):
