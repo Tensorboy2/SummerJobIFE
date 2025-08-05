@@ -434,7 +434,7 @@ class CustomDataset(Dataset):
         #     img = torch.zeros_like(img)
 
         # z-score normalization
-        img = (img - img.mean(dim=(1,2), keepdim=True)) / (img.std(dim=(1,2), keepdim=True) + 1e-5)
+        # img = (img - img.mean(dim=(1,2), keepdim=True)) / (img.std(dim=(1,2), keepdim=True) + 1e-5)
 
 
         mask_min, mask_max = mask.min(), mask.max()
