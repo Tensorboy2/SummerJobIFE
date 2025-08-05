@@ -34,22 +34,26 @@ def run_inference(model, img, device):
     return pred_binary[0,0].numpy(), pred_probs[0,0].numpy()
 
 def get_confusion_map(mask_np, pred_binary):
-    mask_bin = (mask_np > 0.5).astype(np.uint8)
-    pred_bin = (pred_binary > 0.5).astype(np.uint8)
-    tp = np.sum((mask_bin == 1) & (pred_bin == 1))
-    tn = np.sum((mask_bin == 0) & (pred_bin == 0))
-    fp = np.sum((mask_bin == 0) & (pred_bin == 1))
-    fn = np.sum((mask_bin == 1) & (pred_bin == 0))
+    # Ensure inputs have same shape
+    assert mask_np.shape == pred_binary.shape, "Input shapes must match"
+    
+    mask_bin = (mask_np > 0.5)
+    pred_bin = (pred_binary > 0.5)
+    
+    # Calculate confusion matrix values
+    tp = np.sum(mask_bin & pred_bin)
+    tn = np.sum(~mask_bin & ~pred_bin)
+    fp = np.sum(~mask_bin & pred_bin)
+    fn = np.sum(mask_bin & ~pred_bin)
+    
+    # Create confusion map
     cm_map = np.zeros(pred_bin.shape, dtype=np.uint8)
-    tn_mask = (mask_bin == 0) & (pred_bin == 0)
-    tp_mask = (mask_bin == 1) & (pred_bin == 1)
-    fn_mask = (mask_bin == 1) & (pred_bin == 0)
-    fp_mask = (mask_bin == 0) & (pred_bin == 1)
-    cm_map[tn_mask] = 0
-    cm_map[tp_mask] = 1
-    cm_map[fn_mask] = 2
-    cm_map[fp_mask] = 3
-    return cm_map, tp, fp, fn
+    cm_map[~mask_bin & ~pred_bin] = 0  # TN
+    cm_map[mask_bin & pred_bin] = 1    # TP
+    cm_map[mask_bin & ~pred_bin] = 2   # FN
+    cm_map[~mask_bin & pred_bin] = 3   # FP
+    
+    return cm_map, tp, fp, fn, tn  # Also return tn for completeness
 
 def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
     from matplotlib.colors import ListedColormap
@@ -62,7 +66,7 @@ def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
     axes[1].set_title(f'Dataset Mask\n(Positive pixels: {np.sum(mask_np > 0.5)})')
     axes[1].axis('off')
     for i, (model_name, pred_binary, pred_probs) in enumerate(preds):
-        cm_map, tp, fp, fn = get_confusion_map(mask_np, pred_binary)
+        cm_map, tp, fp, fn, tn = get_confusion_map(mask_np, pred_binary)
         cm_colors = ListedColormap([
             [0,0,0,1],    # TN - black
             [1,1,1,1],    # TP - white
@@ -70,6 +74,14 @@ def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
             [1,0,0,1]     # FP - red
         ])
         axes[2+i].imshow(cm_map, cmap=cm_colors, vmin=0, vmax=3)
+        print()
+        print()
+        print()
+        print(np.min(cm_map), np.max(cm_map))
+        print(np.unique(cm_map))
+        print()
+        print()
+        print()
         axes[2+i].set_title(f'{model_name} (.pt)\nTP={tp}, FP={fp}, FN={fn}')
         axes[2+i].axis('off')
     plt.tight_layout()
@@ -192,7 +204,7 @@ def main():
             model = get_model(model_name, ckpt_path, device)
             pred_binary, pred_probs = run_inference(model, tiff_tensor, device)
             tiff_preds.append((model_name, pred_binary, pred_probs, tiff_rgb))
-        plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir)
+        # plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir)
 
 
 if __name__ == '__main__':

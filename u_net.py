@@ -43,6 +43,7 @@ class UNet(nn.Module):
         self.dec1 = DoubleConv(64, 32)
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
+        self.sigmoid = nn.Sigmoid()
         self.name = 'unet_2'
     #     self._init_weights()
 
@@ -74,7 +75,7 @@ class UNet(nn.Module):
         d3 = self.dec3(torch.cat([self.up3(d4), e3], dim=1))
         d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
         d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
-        return self.final(d1)
+        return self.sigmoid(self.final(d1))
     
 
 
@@ -183,7 +184,7 @@ class ConvNeXtV2Encoder(nn.Module):
 class ConvNeXtV2Segmentation(nn.Module):
     def __init__(self, in_chans=12, num_classes=1, encoder_output_channels=320):
         super().__init__()
-        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True,verbose=True)
+        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True,verbose=False)
         encoder = ConvNeXtV2Encoder(mmearth_model)
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
@@ -408,7 +409,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 8,
+        'batch_size': 64,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 8e-4,  # Lower learning rate
@@ -416,7 +417,7 @@ def train_model():
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 0.8,     # Standard BCE
+            'bce': 1.0,     # Standard BCE
             'dice': 0.0,    # Dice loss for overlap
             'focal': 0.0,    # Focal loss for hard examples
         },
@@ -429,8 +430,8 @@ def train_model():
     }
     
     # Initialize model
-    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    # model = UNet(in_ch=12, out_ch=1)
+    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    model = UNet(in_ch=12, out_ch=1)
     # model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
     device = torch.device(config['device'])
     model = model.to(device)

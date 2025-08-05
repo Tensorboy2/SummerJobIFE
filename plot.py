@@ -32,7 +32,7 @@ def plot_training_history(history_files):
     os.makedirs(plot_dir, exist_ok=True)
 
     # Loss metrics (keep as is)
-    loss_metrics = [m for m in metrics if m in ['loss', 'bce', 'dice']]
+    loss_metrics = [m for m in metrics if m in ['loss', 'bce', 'dice', 'iou', 'f1']]
     for metric in loss_metrics:
         plt.figure(figsize=(8, 6))
         metric_df = df.melt(
@@ -44,13 +44,13 @@ def plot_training_history(history_files):
         sns.lineplot(data=metric_df, x='epoch', y=metric, hue='model', style='type')
         plt.title(f'Training and Validation {metric.capitalize()} Comparison')
         plt.xlabel('Epoch')
-        plt.yscale('log')
+        # plt.yscale('log')
         plt.grid(True)
         plt.xticks(metric_df['epoch'].unique())
         plt.ylabel(metric.capitalize())
         plt.legend()
         plt.tight_layout()
-        out_path = os.path.join(plot_dir, f'{metric}_comparison.pdf')
+        out_path = os.path.join(plot_dir, f'{metric}_comparison.png')
         plt.savefig(out_path)
         plt.close()
 
@@ -67,7 +67,7 @@ def plot_training_history(history_files):
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
-        out_path = os.path.join(plot_dir, f'{model}_precision_vs_recall.pdf')
+        out_path = os.path.join(plot_dir, f'{model}_precision_vs_recall.png')
         plt.savefig(out_path)
         plt.close()
 
@@ -87,9 +87,18 @@ def plot_training_history(history_files):
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    out_path = os.path.join(plot_dir, 'confusion_matrix_elements.pdf')
+    out_path = os.path.join(plot_dir, 'confusion_matrix_elements.png')
     plt.savefig(out_path)
     plt.close()
+
+    # Leaderboard print:
+    print("\nLeaderboard:")
+    leaderboard = df.groupby('model').agg({
+        'val_iou': 'max',
+        'val_f1': 'max',
+    }).reset_index()
+    leaderboard = leaderboard.sort_values(by='val_iou', ascending=False)
+    print(leaderboard)
 
 if __name__ == "__main__":
     # Example usage: add more files as needed
