@@ -43,7 +43,7 @@ class UNet(nn.Module):
         self.dec1 = DoubleConv(64, 32)
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
-        self.sigmoid = nn.Sigmoid()
+        # self.sigmoid = nn.Sigmoid()
         self.name = 'unet_2'
     #     self._init_weights()
 
@@ -75,7 +75,7 @@ class UNet(nn.Module):
         d3 = self.dec3(torch.cat([self.up3(d4), e3], dim=1))
         d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
         d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
-        return self.sigmoid(self.final(d1))
+        return self.final(d1)
     
 
 
@@ -190,7 +190,7 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
         self.name = 'convnextv2_open'
-        self.sigmoid = nn.Sigmoid()
+        # self.sigmoid = nn.Sigmoid()
         # Freeze encoder weights
         # for param in self.encoder.parameters():
         #     param.requires_grad = False
@@ -198,13 +198,13 @@ class ConvNeXtV2Segmentation(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         x = self.decoder(x)
-        return self.sigmoid(x)
+        return x
 
 def iou_score(preds, targets, threshold=0.5):
     """Calculate IoU score for batch of predictions and targets"""
     # Apply sigmoid to predictions if they're logits
-    # if preds.max() > 1 or preds.min() < 0:
-    #     preds = torch.sigmoid(preds)
+    if preds.max() > 1 or preds.min() < 0:
+        preds = torch.sigmoid(preds)
     
     preds = (preds > threshold).float()
     targets = targets.float()
@@ -218,13 +218,13 @@ def iou_score(preds, targets, threshold=0.5):
 
 def dice_loss(preds, targets, smooth=1e-8):
     """Dice loss for better segmentation training"""
-    # preds = torch.sigmoid(preds)
+    preds = torch.sigmoid(preds)
     
     intersection = (preds * targets).sum(dim=(2, 3))
     dice_coeff = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
     return 1 - dice_coeff.mean()
 
-def focal_loss(prob, targets, alpha=1, gamma=2, smooth=1e-8):
+def focal_loss(preds, targets, alpha=1, gamma=2, smooth=1e-8):
     """
     Focal Loss for addressing class imbalance
     
@@ -233,10 +233,10 @@ def focal_loss(prob, targets, alpha=1, gamma=2, smooth=1e-8):
         gamma: Focusing parameter (default: 2)
     """
     # Apply sigmoid to get probabilities
-    # prob = torch.sigmoid(preds)
+    prob = torch.sigmoid(preds)
     
     # Calculate BCE loss
-    bce_loss = nn.BCELoss()(prob, targets)
+    bce_loss = nn.BCEWithLogitsLoss()(preds, targets)
     
     # Calculate p_t
     p_t = prob * targets + (1 - prob) * (1 - targets)
@@ -283,13 +283,13 @@ def bce_loss(preds, targets):
     return nn.BCEWithLogitsLoss()(preds, targets)
 
 def dice_coeff(preds, targets, smooth=1e-8):
-    # preds = torch.sigmoid(preds)
+    preds = torch.sigmoid(preds)
     intersection = (preds * targets).sum(dim=(2, 3))
     dice = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
     return dice.mean()
 
 def get_confusion_matrix(preds, targets, threshold=0.5):
-    # preds = torch.sigmoid(preds)
+    preds = torch.sigmoid(preds)
     preds = (preds > threshold).float()
     targets = targets.float()
     tp = ((preds == 1) & (targets == 1)).sum().item()
@@ -435,7 +435,7 @@ class CustomDataset(Dataset):
 
         # mask_min, mask_max = mask.min(), mask.max()
         # if mask_max > mask_min:
-        #     mask = (mask - mask_min) / (mask_max - mask_min + 1e-5) >0.5  # Binarize mask
+        #     mask = (mask - mask_min) / (mask_max - mask_min + 1e-5)
         # else:
         #     mask = torch.zeros_like(mask)
 
