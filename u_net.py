@@ -427,11 +427,15 @@ class CustomDataset(Dataset):
         mask = torch.load(mask_path).float()
 
         # Normalize image
-        img_min, img_max = img.min(), img.max()
-        if img_max > img_min:
-            img = 2*(img - img_min) / (img_max - img_min)
-        else:
-            img = torch.zeros_like(img)
+        # img_min, img_max = img.min(), img.max()
+        # if img_max > img_min:
+        #     img = 2*(img - img_min) / (img_max - img_min)
+        # else:
+        #     img = torch.zeros_like(img)
+
+        # z-score normalization
+        img = (img - img.mean(dim=(1,2), keepdim=True)) / (img.std(dim=(1,2), keepdim=True) + 1e-5)
+
 
         mask_min, mask_max = mask.min(), mask.max()
         if mask_max > mask_min:
@@ -544,13 +548,13 @@ def train_model():
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 1.0,     # Standard BCE
-            'dice': 0.0,    # Dice loss for overlap
+            'bce': 0.9,     # Standard BCE
+            'dice': 0.1,    # Dice loss for overlap
             'focal': 0.0,    # Focal loss for hard examples
         },
         'crop_size': (128, 128),  # Crop size for training augmentations
         'weight_decay': 0.1,  # Regularization
-        'warmup_steps': 00,  # No warmup for simplicity
+        'warmup_steps': 200,  
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
