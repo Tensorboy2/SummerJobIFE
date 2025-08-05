@@ -184,7 +184,7 @@ class ConvNeXtV2Encoder(nn.Module):
 class ConvNeXtV2Segmentation(nn.Module):
     def __init__(self, in_chans=12, num_classes=1, encoder_output_channels=320):
         super().__init__()
-        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True,verbose=False)
+        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True,verbose=True)
         encoder = ConvNeXtV2Encoder(mmearth_model)
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
@@ -410,7 +410,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 32,
+        'batch_size': 16,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 8e-4,  # Lower learning rate
