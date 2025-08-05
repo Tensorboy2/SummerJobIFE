@@ -408,7 +408,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 8,
+        'batch_size': 64,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 8e-4,  # Lower learning rate
@@ -416,8 +416,8 @@ def train_model():
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 0.7,     # Standard BCE
-            'dice': 0.0,    # Dice loss for overlap
+            'bce': 0.4,     # Standard BCE
+            'dice': 0.3,    # Dice loss for overlap
             'focal': 0.3,    # Focal loss for hard examples
         },
         'weight_decay': 0.1,  # Regularization
