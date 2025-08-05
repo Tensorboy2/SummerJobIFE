@@ -190,6 +190,7 @@ class ConvNeXtV2Segmentation(nn.Module):
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
         self.name = 'convnextv2_open'
+        self.sigmoid = nn.Sigmoid()
         # Freeze encoder weights
         # for param in self.encoder.parameters():
         #     param.requires_grad = False
@@ -197,13 +198,13 @@ class ConvNeXtV2Segmentation(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         x = self.decoder(x)
-        return x
+        return self.sigmoid(x)
 
 def iou_score(preds, targets, threshold=0.5):
     """Calculate IoU score for batch of predictions and targets"""
     # Apply sigmoid to predictions if they're logits
-    if preds.max() > 1 or preds.min() < 0:
-        preds = torch.sigmoid(preds)
+    # if preds.max() > 1 or preds.min() < 0:
+    #     preds = torch.sigmoid(preds)
     
     preds = (preds > threshold).float()
     targets = targets.float()
@@ -217,7 +218,7 @@ def iou_score(preds, targets, threshold=0.5):
 
 def dice_loss(preds, targets, smooth=1e-8):
     """Dice loss for better segmentation training"""
-    preds = torch.sigmoid(preds)
+    # preds = torch.sigmoid(preds)
     
     intersection = (preds * targets).sum(dim=(2, 3))
     dice_coeff = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
@@ -232,7 +233,7 @@ def focal_loss(preds, targets, alpha=1, gamma=2, smooth=1e-8):
         gamma: Focusing parameter (default: 2)
     """
     # Apply sigmoid to get probabilities
-    prob = torch.sigmoid(preds)
+    # prob = torch.sigmoid(preds)
     
     # Calculate BCE loss
     bce_loss = nn.BCEWithLogitsLoss()(preds, targets)
@@ -282,13 +283,13 @@ def bce_loss(preds, targets):
     return nn.BCEWithLogitsLoss()(preds, targets)
 
 def dice_coeff(preds, targets, smooth=1e-8):
-    preds = torch.sigmoid(preds)
+    # preds = torch.sigmoid(preds)
     intersection = (preds * targets).sum(dim=(2, 3))
     dice = (2. * intersection + smooth) / (preds.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + smooth)
     return dice.mean()
 
 def get_confusion_matrix(preds, targets, threshold=0.5):
-    preds = torch.sigmoid(preds)
+    # preds = torch.sigmoid(preds)
     preds = (preds > threshold).float()
     targets = targets.float()
     tp = ((preds == 1) & (targets == 1)).sum().item()
