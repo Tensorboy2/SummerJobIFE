@@ -265,7 +265,7 @@ def combined_loss(preds, targets, loss_weights=None):
     total_loss = 0.0
     
     if loss_weights.get('bce', 0) > 0:
-        bce = nn.BCELoss()(preds, targets)
+        bce = nn.BCEWithLogitsLoss()(preds, targets)
         total_loss += loss_weights['bce'] * bce
     
     if loss_weights.get('dice', 0) > 0:
