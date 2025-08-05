@@ -410,18 +410,18 @@ def train_model():
     config = {
         'batch_size': 64,
         'val_ratio': 0.2,
-        'num_workers': 0,
-        'learning_rate': 2e-4,  # Lower learning rate
-        'num_epochs': 50,
+        'num_workers': 4,
+        'learning_rate': 8e-4,  # Lower learning rate
+        'num_epochs': 20,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 1.0,     # Standard BCE
+            'bce': 0.7,     # Standard BCE
             'dice': 0.0,    # Dice loss for overlap
-            'focal': 0.0,    # Focal loss for hard examples
+            'focal': 0.3,    # Focal loss for hard examples
         },
-        'weight_decay': 0.2,  # Regularization
-        'warmup_steps': 1000,  # No warmup for simplicity
+        'weight_decay': 0.1,  # Regularization
+        'warmup_steps': 200,  # No warmup for simplicity
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
