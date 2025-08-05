@@ -80,7 +80,7 @@ def plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir):
     from matplotlib.colors import ListedColormap
     ncols = 1 + len(tiff_preds)
     fig, axes = plt.subplots(1, ncols, figsize=(4*ncols, 4))
-    axes[0].imshow(tiff_rgb)
+    axes[0].imshow(tiff_rgb*2)
     axes[0].set_title(f'Validation RGB: {tiff_file}')
     axes[0].axis('off')
     for i, (model_name, pred_binary, pred_probs, _) in enumerate(tiff_preds):
