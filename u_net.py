@@ -408,7 +408,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 64,
+        'batch_size': 32,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 8e-4,  # Lower learning rate
