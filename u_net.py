@@ -433,11 +433,11 @@ class CustomDataset(Dataset):
         else:
             img = torch.zeros_like(img)
 
-        # mask_min, mask_max = mask.min(), mask.max()
-        # if mask_max > mask_min:
-        #     mask = (mask - mask_min) / (mask_max - mask_min + 1e-5)
-        # else:
-        #     mask = torch.zeros_like(mask)
+        mask_min, mask_max = mask.min(), mask.max()
+        if mask_max > mask_min:
+            mask = (mask - mask_min) / (mask_max - mask_min + 1e-5)
+        else:
+            mask = torch.zeros_like(mask)
 
         # Apply augmentations if training
         if self.training:
