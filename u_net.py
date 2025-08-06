@@ -554,7 +554,7 @@ def train_model():
         },
         'crop_size': (128, 128),  # Crop size for training augmentations
         'weight_decay': 0.1,  # Regularization
-        'warmup_steps': 200,  
+        'warmup_steps': 2000,  
         'learning_rate_decay': 'cosine',  # Use learning rate decay
         'plot_examples': False,  # Whether to plot examples during training
         'save_best_model': True  # Whether to save the best model based on validation Io
