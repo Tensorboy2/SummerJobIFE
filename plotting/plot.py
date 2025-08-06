@@ -28,7 +28,7 @@ def plot_training_history(history_files):
                 metrics.add(metric)
 
     # Create plots folder if it doesn't exist
-    plot_dir = 'plots'
+    plot_dir = 'plotting/plots'
     os.makedirs(plot_dir, exist_ok=True)
 
     # Loss metrics (keep as is)
