@@ -44,7 +44,7 @@ class UNet(nn.Module):
 
         self.final = nn.Conv2d(32, out_ch, kernel_size=1)
         # self.sigmoid = nn.Sigmoid()
-        self.name = 'unet_2'
+        self.name = 'unet_3'
     #     self._init_weights()
 
     # def _init_weights(self):

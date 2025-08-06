@@ -57,6 +57,15 @@ def get_confusion_map(mask_np, pred_binary):
 
 def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
     from matplotlib.colors import ListedColormap
+
+
+
+    mask_min, mask_max = mask_np.min(), mask_np.max()
+    if mask_max > mask_min:
+        mask = (mask_np - mask_min) / (mask_max - mask_min)
+    else:
+        mask = np.zeros_like(mask)
+
     ncols = 2 + len(preds)
     fig, axes = plt.subplots(1, ncols, figsize=(4*ncols, 4))
     axes[0].imshow(rgb)
@@ -66,7 +75,7 @@ def plot_example(idx, img_file, rgb, mask_np, preds, _, plot_dir):
     axes[1].set_title(f'Dataset Mask\n(Positive pixels: {np.sum(mask_np > 0.5)})')
     axes[1].axis('off')
     for i, (model_name, pred_binary, pred_probs) in enumerate(preds):
-        cm_map, tp, fp, fn, tn = get_confusion_map(mask_np, pred_binary)
+        cm_map, tp, fp, fn, tn = get_confusion_map(mask, pred_binary)
         cm_colors = ListedColormap([
             [0,0,0,1],    # TN - black
             [1,1,1,1],    # TP - white
@@ -104,7 +113,7 @@ def plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir):
             [0,0,0,1],    # 0 - black
             [1,1,1,1],    # 1 - white
         ])
-        axes[1+i].imshow(cm_map, cmap=cm_colors, alpha=0.5, vmin=0, vmax=1)
+        axes[1+i].imshow(cm_map, cmap=cm_colors, alpha=1.0, vmin=0, vmax=1)
         axes[1+i].set_title(f'{model_name} (Validation pred)')
         axes[1+i].axis('off')
     plt.tight_layout()
@@ -119,8 +128,14 @@ def load_s2_tiff_as_tensor(tiff_path):
     tensor = torch.from_numpy(arr).permute(2, 0, 1).float()
 
     # normalize between 0 and 1
-    tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min() + 1e-8)
+    tensor = 2*(tensor - tensor.min()) / (tensor.max() - tensor.min())
     # Scale to match preprocessing
+
+    # img_min, img_max = img.min(), img.max()
+        # if img_max > img_min:
+        #     img = 2*(img - img_min) / (img_max - img_min)
+        # else:
+        #     img = torch.zeros_like(img)
 
     # tensor *= 15  # Match preprocessing
     return tensor
@@ -184,6 +199,12 @@ def main():
                 rgb = img[:,:,[3,2,1]].cpu().numpy()
             return normalize_rgb_minmax(rgb)
 
+
+        img_min, img_max = img.min(), img.max()
+        if img_max > img_min:
+            img = 2*(img - img_min) / (img_max - img_min)
+        else:
+            img = torch.zeros_like(img)
         rgb = get_rgb(img)
         preds = []
         for model_name, ckpt_path in checkpoints:
@@ -204,7 +225,7 @@ def main():
             model = get_model(model_name, ckpt_path, device)
             pred_binary, pred_probs = run_inference(model, tiff_tensor, device)
             tiff_preds.append((model_name, pred_binary, pred_probs, tiff_rgb))
-        # plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir)
+        plot_tiff_validation(idx, tiff_file, tiff_rgb, tiff_preds, plot_dir)
 
 
 if __name__ == '__main__':
