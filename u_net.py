@@ -548,8 +548,8 @@ def train_model():
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Loss function weights - experiment with these!
         'loss_weights': {
-            'bce': 0.9,     # Standard BCE
-            'dice': 0.1,    # Dice loss for overlap
+            'bce': 1.0,     # Standard BCE
+            'dice': 0.0,    # Dice loss for overlap
             'focal': 0.0,    # Focal loss for hard examples
         },
         'crop_size': (128, 128),  # Crop size for training augmentations
