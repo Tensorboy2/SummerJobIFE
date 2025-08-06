@@ -540,7 +540,7 @@ def get_dataloaders(config):
 def train_model():
     # Configuration
     config = {
-        'batch_size': 64,
+        'batch_size': 8,
         'val_ratio': 0.2,
         'num_workers': 4,
         'learning_rate': 1e-3,  # Lower learning rate
@@ -562,8 +562,8 @@ def train_model():
     }
     
     # Initialize model
-    # model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
-    model = UNet(in_ch=12, out_ch=1)
+    model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
+    # model = UNet(in_ch=12, out_ch=1)
     # model = create_convnextv3_segmentation(in_chans=12, num_classes=1, size='atto')
     device = torch.device(config['device'])
     model = model.to(device)
