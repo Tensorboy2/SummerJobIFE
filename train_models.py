@@ -6,11 +6,8 @@ import os
 from models.unet import UNet
 from models.convnextv2 import ConvNeXtV2Segmentation
 
-
 from training_utils.metrics import *
 from dataloader import get_dataloaders
-
-
 
 def train_model():
     '''
