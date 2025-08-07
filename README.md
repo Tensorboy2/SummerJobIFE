@@ -35,7 +35,8 @@ pip install -r requirements.txt
 ```
 
 
-## Training structure:
-- Pre-training:
-    - 
-    - 
+Yang dataset can be downloaded at: [https://zenodo.org/records/10939100](https://zenodo.org/records/10939100)
+Convert to **.pt** using 
+```bash 
+python3 src/data/utils/convert_tfrecors_pt.py
+```

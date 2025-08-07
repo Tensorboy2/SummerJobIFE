@@ -77,9 +77,8 @@ class Decoder(nn.Module):
 
     
 class ConvNeXtV2Encoder(nn.Module):
-    def __init__(self, ):
+    def __init__(self, mmearth_model):
         super().__init__()
-        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True)
         self.initial_conv = mmearth_model.initial_conv
         self.stem = mmearth_model.stem
         self.downsample_layers = mmearth_model.downsample_layers
@@ -109,19 +108,20 @@ class ConvNeXtV2Segmentation(nn.Module):
                  num_classes=1, encoder_output_channels=320,
                  open_model=False):
         super().__init__()
+        mmearth_model = torch.hub.load('vishalned/mmearth-train', 'MPMAE', model_name='convnextv2_atto', pretrained=True, linear_probe=True)
         
-        encoder = ConvNeXtV2Encoder()
+        encoder = ConvNeXtV2Encoder(mmearth_model)
         self.encoder = encoder
         self.decoder = Decoder(encoder_output_channels=encoder_output_channels)
         self.num_classes = num_classes
 
         # Freeze encoder weights
         if open_model:
-            self.name = 'convnextv2_open'
+            self.model_name = 'convnextv2_atto'
             for param in self.encoder.parameters():
                 param.requires_grad = True
         else:
-            self.name = 'convnextv2_locked'
+            self.model_name = 'convnextv2_atto'
             for param in self.encoder.parameters():
                 param.requires_grad = False
         
@@ -137,4 +137,11 @@ if __name__ == "__main__":
     x = torch.randn(1, 12, 256, 256)
     output = model(x)
     print(output.shape)  # Should be [1, 1, 256, 256]
-    print(model.name)  # Should print 'convnextv2_open' or 'conv
+    print(model.model_name)  # Should print 'convnextv2_open' or 'conv
+
+    state_dict = model.state_dict()
+    load = torch.load('results/convnextv2_locked_best_unet_model.pth', map_location='cpu')
+    for state_dict,load in zip(state_dict.keys(),load.keys()):
+        if state_dict != load:
+            print(f"Mismatch: {state_dict} vs {load}")
+    

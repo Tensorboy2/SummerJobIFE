@@ -5,23 +5,21 @@ import argparse
 import numpy as np
 # from train_models import UNet, ConvNeXtV2Segmentation
 from models.unet import UNet
-from models.convnextv2 import ConvNeXtV2Segmentation
+# from models.convnextv2 import ConvNeXtV2Segmentation
+from train_models import ConvNeXtV2Segmentation
+
 
 def get_model(model_name, ckpt_path, device):
     if model_name == 'unet':
         model = UNet(in_ch=12, out_ch=1)
-    elif model_name == 'convnextv2_open':
-        model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320, open_model=True)
+    elif model_name.startswith('convnextv2'):
+        model = ConvNeXtV2Segmentation(in_chans=12, num_classes=1, encoder_output_channels=320)
     else:
         raise ValueError(f"Unknown model: {model_name}")
-    # strip of 'model.' prefix if present
-    if ckpt_path.startswith('models.'):
-        ckpt_path = ckpt_path[7:]
-    # Load the checkpoint
-    state_dict = torch.load(ckpt_path, map_location='cpu')
-    if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:
-        state_dict = state_dict['model_state_dict']
-    model.load_state_dict(state_dict, strict=False)
+    
+    # state_dict = torch.load(ckpt_path, map_location='cpu')
+    # if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:
+    #     state_dict = state_dict['model_state_dict']
     model = model.to(device)
     model.eval()
     return model
@@ -193,7 +191,7 @@ def main():
         ('unet', 'results/unet_3_best_unet_model.pth'),
         ('convnextv2_open', 'results/convnextv2_open_best_unet_model.pth'),
         ('convnextv2_open', 'results/convnextv2_open_best_unet_model_2.pth'),
-        ('convnextv2', 'results/convnextv2_locked_best_unet_model.pth')
+        ('convnextv2_locked', 'results/convnextv2_locked_best_unet_model.pth')
     ]
     plot_dir = 'plotting/inference_plots'
     os.makedirs(plot_dir, exist_ok=True)
